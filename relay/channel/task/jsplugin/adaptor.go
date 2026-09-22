@@ -1420,7 +1420,19 @@ func (a *TaskAdaptor) validateResolvedUsageValue(value any, usageSchema map[stri
 	case map[string]any:
 		for key, item := range typed {
 			if schema, declared := usageSchema[key]; declared {
-				if _, err := validateUsageValue(item, schema, true); err != nil {
+				// Request enums may use vendor spelling (for example 720P).
+				// Permit canonical casing here so the driver can normalize it;
+				// extracted billing facts still undergo exact schema validation.
+				validationValue := item
+				if text, ok := item.(string); ok && len(schema.Enum) > 0 {
+					for _, allowed := range schema.Enum {
+						if strings.EqualFold(strings.TrimSpace(text), allowed) {
+							validationValue = allowed
+							break
+						}
+					}
+				}
+				if _, err := validateUsageValue(validationValue, schema, true); err != nil {
 					return err
 				}
 			} else if limit, canonical := canonicalUsageLimit(key); canonical {

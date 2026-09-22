@@ -813,6 +813,10 @@ export function extractUsageOnComplete(task, result, body) { return (body || {})
 			usage: map[string]any{"mode": "turbo"},
 		},
 		{
+			name:  "billing facts must use canonical enum spelling",
+			usage: map[string]any{"mode": " PRO "},
+		},
+		{
 			name:  "undeclared numeric ratio uses conservative host ceiling",
 			usage: map[string]any{"custom_ratio": float64(relaycommon.MaxTaskDurationSeconds + 1)},
 		},

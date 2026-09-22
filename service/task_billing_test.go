@@ -1689,6 +1689,71 @@ func TestSettle_TieredUsageFactsMergeCompletionOverSubmission(t *testing.T) {
 	}
 }
 
+func TestSettle_CTYunMeasuredTokensReplaceReservation(t *testing.T) {
+	source, err := os.ReadFile("../plugins/tasks/ctyun-cdance/plugin.js")
+	require.NoError(t, err)
+	plugin, err := jsplugin.NewRegistry().Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	value, err := plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{
+		"upstreamModel": "cdance2.5-0807",
+		"requestBody":   map[string]any{"seconds": 11, "resolution": "720p", "prompt": "a cat"},
+	})
+	require.NoError(t, err)
+	encoded, err := common.Marshal(value)
+	require.NoError(t, err)
+	var reserved map[string]any
+	require.NoError(t, common.Unmarshal(encoded, &reserved))
+	require.Equal(t, float64(237600), reserved["tokens"])
+	for _, tc := range []struct {
+		name  string
+		usage map[string]any
+		want  int
+	}{
+		{"completion wins", map[string]any{"completion_tokens": 238500, "total_tokens": 999999}, 238500},
+		{"fallback total", map[string]any{"total_tokens": 200000}, 200000},
+		{"measured zero", map[string]any{"completion_tokens": 0, "total_tokens": 999999}, 0},
+		{"missing preserves reservation", map[string]any{}, 237600},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			const userID, initialQuota, preConsumed = 37, 1000000, 237600
+			seedUser(t, userID, initialQuota)
+			value, err := plugin.Engine.Call(t.Context(), "extractUsageOnComplete", map[string]any{}, map[string]any{}, map[string]any{
+				"status": "succeeded", "usage": tc.usage, "resolution": "720p",
+			})
+			require.NoError(t, err)
+			encoded, err := common.Marshal(value)
+			require.NoError(t, err)
+			var actual map[string]any
+			require.NoError(t, common.Unmarshal(encoded, &actual))
+			task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
+			// A synthetic $1 / million tokens and quota unit make each token
+			// one quota unit; these are test prices, never vendor defaults.
+			const expression = `tier("720p", u("tokens") * 1 / 1000000)`
+			task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+				ExprString: expression, ExprHash: billingexpr.ExprHashString(expression),
+				GroupRatio: 1, QuotaPerUnit: 1000000, ExprVersion: 1,
+				TaskUsageBilling: true, UsageFacts: reserved, EstimatedTier: "720p",
+			}
+			require.True(t, settleTaskBillingOnComplete(context.Background(), &mockAdaptor{}, task,
+				&relaycommon.TaskInfo{Status: model.TaskStatusSuccess, UsageFacts: actual}))
+			assert.Equal(t, tc.want, task.Quota)
+			assert.Equal(t, initialQuota+preConsumed-tc.want, getUserQuota(t, userID))
+			assert.Equal(t, float64(237600), reserved["tokens"], "submission snapshot must not be mutated")
+			wantFacts := map[string]any{"tokens": float64(tc.want), "resolution": "720p"}
+			assert.Equal(t, wantFacts, task.PrivateData.BillingContext.TieredSnapshot.UsageFacts)
+			if tc.want != preConsumed {
+				log := getLastLog(t)
+				require.NotNil(t, log)
+				var other map[string]any
+				require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+				assert.Equal(t, wantFacts, other["usage_facts"])
+				assert.Equal(t, "720p", other["matched_tier"])
+			}
+		})
+	}
+}
+
 func TestSettle_TieredSnapshotWriteBackUsesSettledFactsAndMatchedTier(t *testing.T) {
 	truncate(t)
 	const userID = 36
