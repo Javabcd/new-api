@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedKeys = []string{"alibaba", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu"}
+var expectedKeys = []string{"alibaba", "ctyun-cdance", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu"}
 
 func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing.T) {
 	generation := jsplugin.DefaultRegistry.Generation()
@@ -25,6 +25,8 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 		action    string
 		renderer  string
 	}{
+		{"POST", "/ctyun/v1/contents/generations/tasks", "ctyun-cdance", jsplugin.RouteTypeSubmit, "", "taskCreated"},
+		{"GET", "/ctyun/v1/contents/generations/tasks/:task_id", "ctyun-cdance", jsplugin.RouteTypeQuery, "", "taskStatus"},
 		{"POST", "/kling/v1/videos/text2video", "kling", jsplugin.RouteTypeSubmit, "text_to_video", "taskCreated"},
 		{"POST", "/kling/v1/videos/image2video", "kling", jsplugin.RouteTypeSubmit, "image_to_video", "taskCreated"},
 		{"GET", "/kling/v1/videos/text2video/:task_id", "kling", jsplugin.RouteTypeQuery, "", "taskStatus"},
@@ -134,7 +136,9 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 }
 
 func TestBuiltInResponsesDecodersEchoChannelMappedAlias(t *testing.T) {
-	bodyOverrides := map[string]map[string]any{}
+	bodyOverrides := map[string]map[string]any{
+		"ctyun-cdance": {"model": "alias-under-test", "input": "a cat walking on the beach", "seconds": 5, "resolution": "720p"},
+	}
 	for _, key := range expectedKeys {
 		t.Run(key, func(t *testing.T) {
 			source, sourceErr := Source(key)
