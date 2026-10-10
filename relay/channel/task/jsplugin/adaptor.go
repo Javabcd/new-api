@@ -1401,6 +1401,13 @@ func (a *TaskAdaptor) submitContext(c *gin.Context, info *relaycommon.RelayInfo)
 			}
 			requestHeaders["Content-Type"] = c.GetHeader("Content-Type")
 			requestHeaders["Accept"] = c.GetHeader("Accept")
+			// Drivers may explicitly forward stable creation/tracing identifiers.
+			// Keep the allowlist narrow: never expose client credentials or cookies.
+			for _, name := range []string{"Idempotency-Key", "X-Request-ID"} {
+				if value := c.GetHeader(name); value != "" {
+					requestHeaders[name] = value
+				}
+			}
 			if strings.Contains(c.GetHeader("Content-Type"), "multipart/form-data") {
 				if form, err := common.ParseMultipartFormReusable(c); err == nil {
 					defer form.RemoveAll()

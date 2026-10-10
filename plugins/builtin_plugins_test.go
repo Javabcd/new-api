@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedKeys = []string{"alibaba", "ctyun-cdance", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu", "xai"}
+var expectedKeys = []string{"alibaba", "ctyun-cdance", "doubao", "google", "hailuo", "jimeng", "kling", "millu-seedance", "sora", "sunoapi", "vertex-ai", "vidu", "xai"}
 
 func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing.T) {
 	generation := jsplugin.DefaultRegistry.Generation()
@@ -27,6 +27,8 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 	}{
 		{"POST", "/ctyun/v1/contents/generations/tasks", "ctyun-cdance", jsplugin.RouteTypeSubmit, "", "taskCreated"},
 		{"GET", "/ctyun/v1/contents/generations/tasks/:task_id", "ctyun-cdance", jsplugin.RouteTypeQuery, "", "taskStatus"},
+		{"POST", "/millu/api/v3/contents/generations/tasks", "millu-seedance", jsplugin.RouteTypeSubmit, "", "taskCreated"},
+		{"GET", "/millu/api/v3/contents/generations/tasks/:task_id", "millu-seedance", jsplugin.RouteTypeQuery, "", "taskStatus"},
 		{"POST", "/kling/v1/videos/text2video", "kling", jsplugin.RouteTypeSubmit, "text_to_video", "taskCreated"},
 		{"POST", "/kling/v1/videos/image2video", "kling", jsplugin.RouteTypeSubmit, "image_to_video", "taskCreated"},
 		{"GET", "/kling/v1/videos/text2video/:task_id", "kling", jsplugin.RouteTypeQuery, "", "taskStatus"},
@@ -106,24 +108,31 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 			plugin, registerErr := registry.RegisterFactory(source, jsplugin.Options{Key: key})
 			require.NoError(t, registerErr)
 
-			var responsesClaim jsplugin.ProtocolClaim
-			foundResponses := false
+			protocol, path := "openai_responses", "/v1/responses"
+			hooks := []string{"decodeRequest", "renderEvents", "renderFinal"}
+			supports := []string{"stream", "sync", "background"}
+			if key == "millu-seedance" {
+				protocol, path = "openai_video", "/v1/videos"
+				hooks, supports = []string{"decodeRequest", "render"}, nil
+			}
+			var protocolClaim jsplugin.ProtocolClaim
+			foundProtocol := false
 			for _, claim := range plugin.Meta.Protocols {
-				if claim.Name == "openai_responses" {
-					responsesClaim = claim
-					foundResponses = true
+				if claim.Name == protocol {
+					protocolClaim = claim
+					foundProtocol = true
 					break
 				}
 			}
-			require.True(t, foundResponses, "openai_responses claim must be present")
-			assert.Equal(t, []string{"stream", "sync", "background"}, responsesClaim.Supports)
+			require.True(t, foundProtocol, "%s claim must be present", protocol)
+			assert.Equal(t, supports, protocolClaim.Supports)
 			for _, model := range plugin.Meta.Models {
-				binding, claimed := registry.Generation().LookupEndpoint("POST", "/v1/responses", model)
+				binding, claimed := registry.Generation().LookupEndpoint("POST", path, model)
 				require.True(t, claimed, model)
 				assert.Same(t, plugin, binding.Plugin)
 			}
-			for _, hook := range []string{"decodeRequest", "renderEvents", "renderFinal"} {
-				callable, callableErr := plugin.Engine.HasCallablePath(t.Context(), "protocols", "openai_responses", hook)
+			for _, hook := range hooks {
+				callable, callableErr := plugin.Engine.HasCallablePath(t.Context(), "protocols", protocol, hook)
 				require.NoError(t, callableErr)
 				assert.True(t, callable, hook)
 			}
@@ -157,7 +166,12 @@ func TestBuiltInResponsesDecodersEchoChannelMappedAlias(t *testing.T) {
 			if override, ok := bodyOverrides[key]; ok {
 				body = override
 			}
-			value, callErr := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_responses", "decodeRequest"}, map[string]any{
+			protocol := "openai_responses"
+			if key == "millu-seedance" {
+				protocol = "openai_video"
+				body = map[string]any{"model": alias, "prompt": "a cat walking on the beach"}
+			}
+			value, callErr := plugin.Engine.CallPath(t.Context(), "protocols", []string{protocol, "decodeRequest"}, map[string]any{
 				"model": alias, "upstreamModel": upstreamModel, "stream": false,
 				"body": map[string]any{"kind": "json", "value": body},
 			})
