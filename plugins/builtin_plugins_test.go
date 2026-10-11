@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedKeys = []string{"alibaba", "ctyun-cdance", "doubao", "google", "hailuo", "jimeng", "kling", "millu-seedance", "sora", "sunoapi", "vertex-ai", "vidu", "xai"}
+var expectedKeys = []string{"alibaba", "ctyun-cdance", "doubao", "google", "hailuo", "jimeng", "kling", "millu-seedance", "moma-seedance", "sora", "sunoapi", "vertex-ai", "vidu", "xai"}
 
 func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing.T) {
 	generation := jsplugin.DefaultRegistry.Generation()
@@ -29,6 +29,8 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 		{"GET", "/ctyun/v1/contents/generations/tasks/:task_id", "ctyun-cdance", jsplugin.RouteTypeQuery, "", "taskStatus"},
 		{"POST", "/millu/api/v3/contents/generations/tasks", "millu-seedance", jsplugin.RouteTypeSubmit, "", "taskCreated"},
 		{"GET", "/millu/api/v3/contents/generations/tasks/:task_id", "millu-seedance", jsplugin.RouteTypeQuery, "", "taskStatus"},
+		{"POST", "/moma/api/v3/contents/generations/tasks", "moma-seedance", jsplugin.RouteTypeSubmit, "", "taskCreated"},
+		{"GET", "/moma/api/v3/contents/generations/tasks/:task_id", "moma-seedance", jsplugin.RouteTypeQuery, "", "taskStatus"},
 		{"POST", "/kling/v1/videos/text2video", "kling", jsplugin.RouteTypeSubmit, "text_to_video", "taskCreated"},
 		{"POST", "/kling/v1/videos/image2video", "kling", jsplugin.RouteTypeSubmit, "image_to_video", "taskCreated"},
 		{"GET", "/kling/v1/videos/text2video/:task_id", "kling", jsplugin.RouteTypeQuery, "", "taskStatus"},
@@ -111,7 +113,7 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 			protocol, path := "openai_responses", "/v1/responses"
 			hooks := []string{"decodeRequest", "renderEvents", "renderFinal"}
 			supports := []string{"stream", "sync", "background"}
-			if key == "millu-seedance" {
+			if key == "millu-seedance" || key == "moma-seedance" {
 				protocol, path = "openai_video", "/v1/videos"
 				hooks, supports = []string{"decodeRequest", "render"}, nil
 			}
@@ -167,7 +169,7 @@ func TestBuiltInResponsesDecodersEchoChannelMappedAlias(t *testing.T) {
 				body = override
 			}
 			protocol := "openai_responses"
-			if key == "millu-seedance" {
+			if key == "millu-seedance" || key == "moma-seedance" {
 				protocol = "openai_video"
 				body = map[string]any{"model": alias, "prompt": "a cat walking on the beach"}
 			}
