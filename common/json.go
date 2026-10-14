@@ -3,7 +3,9 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/gin-gonic/gin/binding"
@@ -41,6 +43,56 @@ func init() {
 
 func Unmarshal(data []byte, v any) error {
 	return kitutil.Unmarshal(data, v)
+}
+
+// UnmarshalStrict rejects unknown members, duplicate members at any depth,
+// and trailing JSON values. Use it for bounded management request contracts.
+func UnmarshalStrict(data []byte, v any) error {
+	if err := validateJSONMembers(json.NewDecoder(bytes.NewReader(data)), 0); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(v); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return fmt.Errorf("expected one JSON value")
+	}
+	return nil
+}
+
+func validateJSONMembers(decoder *json.Decoder, depth int) error {
+	if depth > 32 {
+		return fmt.Errorf("JSON nesting exceeds limit")
+	}
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, container := token.(json.Delim)
+	if !container {
+		return nil
+	}
+	seen := make(map[string]bool)
+	for decoder.More() {
+		if delim == '{' {
+			member, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := member.(string)
+			if !ok || seen[strings.ToLower(key)] {
+				return fmt.Errorf("duplicate or invalid JSON member")
+			}
+			seen[strings.ToLower(key)] = true
+		}
+		if err := validateJSONMembers(decoder, depth+1); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
 
 func UnmarshalJsonStr(data string, v any) error {

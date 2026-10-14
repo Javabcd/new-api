@@ -896,4 +896,12 @@ export const STATIC_I18N_KEYS = [
   'Verification method',
   'Admin permissions updated',
   'Provider ID',
+  'Prompt is required',
+  'Duration is required',
+  'Invalid duration',
+  'Resolution is required',
+  'Unsupported resolution',
+  'Unsupported aspect ratio',
+  'Enter an HTTP or HTTPS image URL',
+  'This model requires a reference image',
 ] as const

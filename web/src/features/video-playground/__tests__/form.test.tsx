@@ -1,0 +1,239 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { api } from '@/lib/api'
+
+import { VideoForm } from '../components/video-form'
+import {
+  buildVideoRequest,
+  emptyVideoForm,
+  videoFormSchema,
+} from '../lib/schema'
+import type { VideoModel, VideoRequest } from '../types'
+
+const millu: VideoModel = {
+  plugin_key: 'millu-seedance',
+  model: 'millu-sd-x-2-5-260801',
+  display_name: 'Millu Seedance',
+  plugin_version: '1.0.0',
+  available: true,
+  capabilities: {
+    supported_modes: ['text_to_video', 'image_to_video'],
+    resolutions: ['720p', '1080p'],
+    ratios: ['16:9', 'adaptive'],
+    image_roles: ['reference_image'],
+    duration_required: false,
+    resolution_required: false,
+    duration_input_min: 1,
+    duration_input_max: 3600,
+    generate_audio: true,
+    watermark: true,
+  },
+}
+const moma: VideoModel = {
+  ...millu,
+  plugin_key: 'moma-seedance',
+  model: 'doubao-seedance-2-0-260128',
+  display_name: 'MoMa',
+  capabilities: {
+    ...millu.capabilities,
+    resolutions: [],
+    ratios: ['16:9', '9:16', '1:1'],
+    duration_input_min: 4,
+    duration_input_max: 15,
+  },
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+function formElement(model: VideoModel, blocked = false) {
+  return (
+    <VideoForm
+      key={`${model.plugin_key}:${model.model}`}
+      model={model}
+      group='default'
+      identity='701:test-session'
+      blocked={blocked}
+      onBusy={() => {}}
+      onIntent={() => {}}
+    />
+  )
+}
+
+function renderForm(model = millu, blocked = false) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const view = render(
+    <QueryClientProvider client={client}>
+      {formElement(model, blocked)}
+    </QueryClientProvider>
+  )
+  return {
+    ...view,
+    changeModel: (next: VideoModel) =>
+      view.rerender(
+        <QueryClientProvider client={client}>
+          {formElement(next)}
+        </QueryClientProvider>
+      ),
+  }
+}
+
+describe('video generation form', () => {
+  test('optional values stay absent and an explicit false reaches the video request', () => {
+    const request = buildVideoRequest(moma, 'auto', {
+      ...emptyVideoForm,
+      prompt: 'A cat runs',
+      generateAudio: 'false',
+    })
+    expect(request.parameters).toEqual({ generate_audio: false })
+    expect(request.group).toBe('auto')
+    expect(request.media).toEqual([])
+  })
+
+  test('CTYun requires duration and resolution before the charge confirmation', async () => {
+    renderForm({
+      ...millu,
+      plugin_key: 'ctyun-cdance',
+      capabilities: {
+        ...millu.capabilities,
+        duration_required: true,
+        resolution_required: true,
+      },
+    })
+    fireEvent.change(screen.getByLabelText('Prompt'), {
+      target: { value: 'A cat runs' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate video' }))
+    expect(await screen.findByText('Duration is required')).toBeVisible()
+    expect(screen.getByText('Resolution is required')).toBeVisible()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Duration (seconds) *')).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  test('switching Millu to MoMa removes resolution, aspect ratio and the previous image', () => {
+    const view = renderForm()
+    fireEvent.change(screen.getByLabelText('Resolution'), {
+      target: { value: '1080p' },
+    })
+    fireEvent.change(screen.getByLabelText('Aspect ratio'), {
+      target: { value: 'adaptive' },
+    })
+    fireEvent.change(screen.getByLabelText('Reference image URL'), {
+      target: { value: 'https://media.example/cat.png' },
+    })
+    view.changeModel(moma)
+    expect(screen.queryByLabelText('Resolution')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Aspect ratio')).toHaveValue('')
+    expect(screen.getByLabelText('Reference image URL')).toHaveValue('')
+  })
+
+  test('a charge confirmation sends the reference role and prevents a second POST while pending', async () => {
+    let finish: (value: {
+      data: { success: true; data: { task_id: string; state: string } }
+    }) => void = () => {}
+    const post = vi.spyOn(api, 'post').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Prompt'), {
+      target: { value: 'A cat runs' },
+    })
+    fireEvent.change(screen.getByLabelText('Generate audio'), {
+      target: { value: 'false' },
+    })
+    fireEvent.change(screen.getByLabelText('Reference image URL'), {
+      target: { value: 'https://media.example/cat.png' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate video' }))
+    const confirmation = await screen.findByRole('alertdialog')
+    const button = within(confirmation).getByRole('button', {
+      name: 'Generate video',
+    })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    const [url, rawPayload, config] = post.mock.calls[0]
+    const payload = rawPayload as VideoRequest
+    expect(url).toBe('/pg/video/tasks')
+    expect(payload.parameters).toEqual({ generate_audio: false })
+    expect(payload.media).toEqual([
+      {
+        type: 'image',
+        url: 'https://media.example/cat.png',
+        role: 'reference_image',
+      },
+    ])
+    expect(config?.headers?.['Idempotency-Key']).toMatch(/^[a-z\d-]{36}$/)
+    expect(config?.headers?.['X-Auth-Session']).toBe('test-session')
+    expect(screen.getByRole('button', { name: 'Submitting...' })).toBeDisabled()
+    finish({
+      data: {
+        success: true,
+        data: { task_id: 'task_public', state: 'accepted' },
+      },
+    })
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Generate video' })
+      ).toBeEnabled()
+    )
+  })
+
+  test('an unresolved submission disables generation without presenting automatic POST retry', () => {
+    renderForm(moma, true)
+    expect(
+      screen.getByRole('button', { name: 'Generate video' })
+    ).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: 'Retry' })
+    ).not.toBeInTheDocument()
+  })
+
+  test.each(['0', '-1', '3601', '5.5', '1e3'])(
+    'an invalid duration %s is rejected before submission',
+    (duration) => {
+      expect(
+        videoFormSchema(millu.capabilities).safeParse({
+          ...emptyVideoForm,
+          prompt: 'A cat runs',
+          duration,
+        }).success
+      ).toBe(false)
+    }
+  )
+})

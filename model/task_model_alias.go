@@ -210,3 +210,18 @@ func followChannelModelMapping(modelMap map[string]string, start string) (string
 		current = mapped
 	}
 }
+
+// ResolveChannelTaskModel is the read-only channel mapping used by task discovery.
+func ResolveChannelTaskModel(channel *Channel, name string) (string, error) {
+	mapping := make(map[string]string)
+	if raw := channel.GetModelMapping(); raw != "" {
+		if err := common.UnmarshalJsonStr(raw, &mapping); err != nil {
+			return "", err
+		}
+	}
+	target, cyclic := followChannelModelMapping(mapping, name)
+	if cyclic {
+		return "", fmt.Errorf("model mapping contains a cycle")
+	}
+	return target, nil
+}

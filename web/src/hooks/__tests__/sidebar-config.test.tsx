@@ -73,6 +73,31 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
   return result
 }
 
+describe('video playground sidebar visibility', () => {
+  it('old configurations show video generation after the chat playground', () => {
+    const { result } = sidebarFor({ chat: { enabled: true, playground: true } })
+    const chat = result.current.find((group) => group.id === 'chat')
+    expect(chat?.items.slice(0, 2).map((item) => item.title)).toEqual([
+      'Playground',
+      'Video generation',
+    ])
+  })
+  it.each([
+    [{ chat: { enabled: true, video_playground: false } }, undefined],
+    [undefined, { chat: { enabled: true, video_playground: false } }],
+  ])(
+    'admin or user disablement hides video generation (%j, %j)',
+    (admin, user) => {
+      const { result } = sidebarFor(admin, user)
+      expect(
+        result.current
+          .flatMap((group) => group.items)
+          .some((item) => item.title === 'Video generation')
+      ).toBe(false)
+    }
+  )
+})
+
 describe('security sidebar visibility', () => {
   it('old configurations show Security & Access immediately after Profile and keep API Keys', () => {
     const { result } = sidebarFor(

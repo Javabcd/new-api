@@ -1,0 +1,269 @@
+接口概览
+创建成功后返回 Task ID，视频任务异步执行。使用创建与查询两个接口即可完成接入。
+
+接口列表
+方法	接口	用途
+POST	/api/v3/contents/generations/tasks	创建视频生成任务
+GET	/api/v3/contents/generations/tasks/{task_id}	查询任务状态和结果
+Quickstart
+
+快速开始
+下面的最小示例创建一个 5 秒、720p、16:9 的有声视频任务。
+
+01在“API 密钥”中创建并保存密钥。
+02按标准请求体提交视频生成任务。
+03保存响应 id，轮询查询直至完成。
+Authentication
+
+鉴权与请求头
+所有接口使用 Bearer API Key，创建任务时同时发送 JSON 内容类型。
+
+HTTP
+Authorization: Bearer <YOUR_API_KEY>
+Content-Type: application/json
+X-Request-ID: <YOUR_REQUEST_ID>
+Idempotency-Key: <IDEMPOTENCY_KEY>
+请求头	是否必填	说明
+Authorization		使用本站 API 密钥，格式为 Bearer sk-...。
+Content-Type		创建任务时固定为 application/json。
+Idempotency-Key		创建任务强烈建议填写；超时或断线重试时必须复用同一个值，避免重复任务和重复计费。
+X-Request-ID		客户端追踪 ID，用于调用链排查。
+只在服务端使用 API 密钥
+不要把密钥写入浏览器、移动端包、公开仓库或日志。发现泄露后请立即撤销并重新创建。
+
+Models & Billing
+
+模型与计费
+模型 ID 不包含分辨率，使用 resolution 参数选择输出规格；单价单位为 CNY / 1M Token。
+
+本站模型 ID	版本	分辨率	输入不含视频	输入包含视频
+millu-sd-x-2-5-260801
+Seedance 2.5	720p	¥70 / 1M	¥42 / 1M
+millu-sd-x-2-5-260801
+Seedance 2.5	1080p	¥77 / 1M	¥46 / 1M
+Token 估算公式
+
+Token = ceil(视频宽 × 视频高 × 24 FPS × 计费秒数 ÷ 1024)
+创建时预冻结预估费用，任务完成后按实际 Token 结算，多冻结金额自动退回。
+
+Create a task
+
+创建任务
+请按下表填写参数，扩展字段的支持情况以所选模型为准。priority 会被忽略，不影响任务排队顺序。参数无效时可根据错误响应调整请求。建议先使用文生视频最小请求完成连通性验证。
+
+/api/v3/contents/generations/tasks
+JSON
+{
+  "model": "millu-sd-x-2-5-260801",
+  "content": [
+    {
+      "type": "text",
+      "text": "电影感城市夜景航拍，镜头平稳推进，霓虹灯倒映在雨后街道上"
+    }
+  ],
+  "duration": 5,
+  "resolution": "720p",
+  "ratio": "16:9",
+  "generate_audio": true
+}
+请求参数
+参数	类型	是否必填	默认值	说明
+model	string	是	-	本站视频模型 ID，仅接受模型价格表中列出的模型。
+content	array	是	-	多模态内容数组，最多 64 项；支持的内容类型以所选模型为准。
+content[].role	string	否	-	影响素材用途、生成模式和比例约束：first_frame/last_frame 为首尾帧，reference_image/reference_video/reference_audio 为普通参考。火山原生协议保留传入角色，单图省略 role 可能按首帧处理；与本站 OpenAI 兼容入口默认普通参考的约定不同。Seedance 2.5 首尾帧及 edit/extend 仅支持 adaptive 或省略 ratio；普通 reference 可指定比例。角色不改变密钥权限或模型计费单价，实际输入类型和用量仍影响费用。详见下方官方任务类型说明。
+duration	integer	否	5	输出视频时长，单位为秒；-1 表示智能时长，具体支持范围以所选模型为准。
+resolution	string	否	720p	输出分辨率，具体能力以所选模型为准。
+ratio	string	否	-	可省略；省略时使用所选模型的默认行为，实际比例以查询响应中的 ratio 为准。支持 21:9、16:9、4:3、1:1、3:4、9:16；部分模型支持 adaptive，具体以模型能力为准。
+generate_audio	boolean	否	true	是否生成音频，默认开启；不需要时可显式设为 false。
+watermark	boolean	否	false	是否添加水印，支持情况以所选模型为准。
+callback_url	string	否	-	当前不支持自定义回调地址，请轮询任务查询接口。
+return_last_frame	boolean	否	false	是否返回视频末帧；启用后可从成功响应的 content.last_frame_url 获取图片地址，支持情况以所选模型为准。
+execution_expires_after	integer	否	172800	任务有效期，支持 3600 至 259200 秒（1 至 72 小时），具体以所选模型为准。
+priority	integer	否	-	该字段会被忽略，不影响任务排队顺序。
+draft	boolean	否	false	是否启用草稿模式，支持情况以所选模型为准。
+seed	integer	否	-	随机种子，支持情况和取值范围以所选模型为准。
+camera_fixed	boolean	否	false	是否固定镜头，支持情况以所选模型为准。
+tools	array	否	-	工具数组；联网检索使用 [{"type":"web_search"}]，支持情况以所选模型为准。
+web_search	boolean	否	-	联网检索请使用 tools，本字段在当前接口中不生效。
+content 内容类型
+type	数据字段	说明
+text	text	提示词，不能为空，最大 20000 个字符。
+image_url	image_url.url + role	支持 HTTP、HTTPS、asset:// 等模型支持的素材地址；单图可省略 role，多图时每张图片必须携带 role。首帧使用 first_frame，尾帧使用 last_frame，参考图使用 reference_image；尾帧必须与首帧配对。图片 Data URL 须为有效图片，单项最大 16 MiB。
+video_url	video_url.url + role	支持 HTTP、HTTPS、asset:// 等模型支持的素材地址；role 可为 user 或 reference_video。含视频输入的任务适用模型价格表中的对应 Token 单价。
+audio_url	audio_url.url + role	支持 HTTP、HTTPS、asset:// 等模型支持的素材地址；role 可为 user 或 reference_audio。音频 Data URL 须为有效音频，单项最大 16 MiB。
+请求限制
+请求体最大 64 MiB、content 最多 64 项、内嵌媒体解码后合计最大 48 MiB；具体媒体类型和参数组合以所选模型能力为准。
+
+Task lifecycle
+
+查询任务
+使用创建响应中的 id 查询同一任务。只有创建该任务的 API 密钥能够读取任务，任务创建后不支持取消。
+
+状态说明
+状态	是否终态	说明
+任务已接收并进入队列，尚未开始生成。
+任务正在处理中，请继续轮询。
+任务已完成，可以读取 content 中的结果地址。
+任务未能完成，可读取 error 获取失败原因。
+任务已取消。本站当前不提供客户端主动取消接口。
+任务已过期且无法继续处理，需要重新创建任务。
+查询任务
+/api/v3/contents/generations/tasks/{task_id}
+cURL
+curl --request GET 'https://api.millu.tv/api/v3/contents/generations/tasks/<TASK_ID>' \
+  --header 'Authorization: Bearer <YOUR_API_KEY>'
+Responses
+
+响应结构
+下例展示任务完成后的响应结构，包括生成结果、视频规格、任务信息和用量；各字段含义见下方说明。
+
+创建成功
+200 JSON
+{
+  "id": "cgt_01kz6c5xjtbbs..."
+}
+任务完成
+200 JSON
+{
+  "id": "cgt_01kz6c5xjtbbs...",
+  "model": "<MODEL_ID>",
+  "status": "succeeded",
+  "content": {
+    "video_url": "https://cdn.example.com/result.mp4",
+    "last_frame_url": "https://cdn.example.com/last-frame.jpg"
+  },
+  "usage": {
+    "completion_tokens": 108900,
+    "total_tokens": 108900,
+    "tool_usage": {
+      "web_search": 1
+    }
+  },
+  "created_at": 1786000000,
+  "updated_at": 1786000120,
+  "seed": 78674,
+  "resolution": "720p",
+  "ratio": "16:9",
+  "duration": 5,
+  "framespersecond": 24,
+  "service_tier": "default",
+  "execution_expires_after": 172800,
+  "generate_audio": true,
+  "draft": false,
+  "priority": 0,
+  "output_format": "mp4",
+  "safety_identifier": "user_example",
+  "tools": [
+    { "type": "web_search" }
+  ],
+  "error": null
+}
+响应参数
+参数	类型	说明
+id	string	视频生成任务的 ID。
+model	string	任务使用的模型名称和版本。
+status	string	任务状态：queued 排队中、running 运行中、succeeded 成功、failed 失败、cancelled 已取消、expired 已过期。
+content	object	视频生成任务的输出内容。
+content.video_url	string	生成视频的 URL，有效期为 24 小时，请及时下载保存。Seedance 2.5 视频 URL 最多可下载 100 次。
+content.last_frame_url	string	视频尾帧图像的 URL，有效期为 24 小时，请及时下载保存。创建任务时设置 return_last_frame 为 true，可获取该尾帧图像。
+created_at	integer	任务创建时间，使用 Unix 时间戳，单位为秒。
+updated_at	integer	任务当前状态的更新时间，使用 Unix 时间戳，单位为秒。
+duration	integer	生成视频的时长，单位为秒。duration 与 frames 二选一；创建任务时未指定 frames，则使用 duration。
+frames	integer	生成视频的帧数。创建任务时指定 frames，则使用 frames，不同时返回 duration。
+framespersecond	integer	生成视频的帧率，单位为 FPS。
+resolution	string	生成视频的分辨率。
+ratio	string	生成视频的宽高比。
+seed	integer	本次生成使用的随机种子整数值。
+generate_audio	boolean	生成的视频是否包含同步音频：true 表示有声视频，false 表示无声视频。支持 Seedance 2.5 和 Seedance 2.0 系列。
+draft	boolean	是否启用样片模式：true 表示生成用于预览的样片，false 表示正常生成视频。
+output_format	string	实际生成的视频格式，取值为 mp4 或 mov。支持 Seedance 2.5。
+service_tier	string	实际处理任务使用的服务等级。
+execution_expires_after	integer	任务提交后的超时阈值，单位为秒。超过该时间仍未完成，任务会被终止并标记为 expired。
+priority	integer	任务的执行优先级，取值范围为 0～9，数值越大优先级越高。
+safety_identifier	string	终端用户的唯一标识；创建任务时设置的值会原样返回。
+tools	object[]	本次生成实际使用的工具。支持 Seedance 2.5 和 Seedance 2.0 系列。
+tools[].type	string	实际使用的工具类型；web_search 表示联网搜索。
+usage	object	本次请求的 Token 用量。
+usage.completion_tokens	integer	生成视频消耗的 Token 数，可用于计费对账。Seedance 2.0 系列有最低 Token 用量限制，实际用量低于下限时返回最低用量并按该用量计费。
+usage.total_tokens	integer	本次请求消耗的总 Token 数。视频生成不统计输入 Token，输入用量为 0，因此 total_tokens 等于 completion_tokens。
+usage.tool_usage	object	本次请求使用工具的用量信息。
+usage.tool_usage.web_search	integer	实际调用联网搜索工具的次数。
+error	object | null	错误信息。任务成功时为 null，失败时包含错误码和错误提示。
+error.code	string	任务失败的错误码。
+error.message	string	任务失败的错误提示信息。
+统一响应结构
+读取 id、model、status、content 和 usage 获取任务标识、进度、结果和用量。
+
+Errors
+
+错误处理
+失败响应使用统一 error 对象。根据 HTTP 状态判断是否重试，并将 error.code 用于程序分支。
+
+JSON
+{
+  "error": {
+    "code": "InvalidParameter",
+    "message": "request is invalid"
+  }
+}
+HTTP 状态	错误码	处理建议
+InvalidParameter	检查 JSON、模型 ID、分辨率、时长、媒体 URL 和不支持的字段。
+Unauthorized	检查 Authorization 请求头和 API 密钥是否有效。
+Forbidden	确认 API 密钥有效且所属客户已获模型访问权限。
+InsufficientBalance	充值余额或降低任务规格后重新提交。
+NotFound	确认 Task ID 正确，并且属于当前 API 密钥。
+RequestEntityTooLarge	请求体最大 64 MiB；请缩小请求体或使用素材地址引用。
+TooManyRequests	命中配额或速率限制，请退避后重试。
+InternalError	稍后重试；持续失败时保留 Request ID 联系支持。
+ServiceUnavailable	当前没有可调度服务资源，请稍后重试。
+Production guide
+
+生产接入建议
+请保存任务状态和标识。客户端断线后，可使用原任务 ID 查询进度。
+
+01
+
+以 5 秒间隔轮询
+仅在 queued 或 running 时继续查询；进入终态后立即停止轮询。
+
+02
+
+覆盖服务端创建等待窗口
+创建请求可能需要等待较长时间，客户端超时建议设置至少 910 秒；提前超时时必须使用相同幂等键重试。
+
+03
+
+贯穿记录 Task ID 与 Request ID
+将标识写入业务日志，便于账单审计、问题定位和任务溯源。
+
+JavaScript
+const terminal = new Set(['succeeded', 'failed', 'expired', 'cancelled'])
+
+
+async function waitForTask(taskId) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const response = await fetch(
+      `https://api.millu.tv/api/v3/contents/generations/tasks/${encodeURIComponent(taskId)}`,
+      { headers: { Authorization: 'Bearer <YOUR_API_KEY>' } }
+    )
+    const task = await response.json()
+    if (!response.ok) throw new Error(task.error?.message ?? 'Query failed')
+    if (terminal.has(task.status)) return task
+    await new Promise(resolve => setTimeout(resolve, 5000))
+  }
+  throw new Error('Task polling timed out')
+}
+Sources
+
+官方来源
+Seedance 协议依据火山方舟官方文档核对；文档链接只用于契约核验，调用仍发送到本站端点。
+
+火山方舟 Seedance 视频生成 API
+
+官方协议
+
+火山方舟：查询视频生成任务
+
+官方协议
+
+Seedance 2.5：参考角色、任务类型与参数限制

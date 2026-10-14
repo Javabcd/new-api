@@ -299,13 +299,19 @@ function TaskArtifactCard(props: { artifact: TaskArtifact }) {
 interface TaskArtifactsProps {
   taskId: string
   enabled: boolean
+  queryScope?: readonly unknown[]
   emptyContent?: (legacyContentUrl?: string) => React.ReactNode
 }
 
-function TaskArtifacts(props: TaskArtifactsProps) {
+export function TaskArtifacts(props: TaskArtifactsProps) {
   const { t } = useTranslation()
   const artifactsQuery = useQuery({
-    queryKey: ['usage-logs', 'task-artifacts', props.taskId],
+    queryKey: [
+      ...(props.queryScope ?? []),
+      'usage-logs',
+      'task-artifacts',
+      props.taskId,
+    ],
     queryFn: async () =>
       requireServerSuccess(await getTaskArtifacts(props.taskId)),
     enabled: props.enabled,

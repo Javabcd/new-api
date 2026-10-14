@@ -201,9 +201,9 @@ export async function getModuleAccessForGuard(
  */
 export function isSidebarModuleEnabled(
   section: string,
-  module: string
+  module: string,
+  status: Record<string, unknown> | null = readCachedStatus()
 ): boolean {
-  const status = readCachedStatus()
   if (!status) return true
 
   const raw = status.SidebarModulesAdmin
