@@ -24,6 +24,8 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { nanoid } from 'nanoid'
+import { toast } from 'sonner'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -35,6 +37,11 @@ import {
   videoFormSchema,
 } from '../lib/schema'
 import type { VideoModel, VideoRequest } from '../types'
+
+vi.mock('nanoid', async (importOriginal) => {
+  const original = await importOriginal<typeof import('nanoid')>()
+  return { ...original, nanoid: vi.fn(original.nanoid) }
+})
 
 const millu: VideoModel = {
   plugin_key: 'millu-seedance',
@@ -71,9 +78,18 @@ const moma: VideoModel = {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.mocked(nanoid).mockReset()
 })
 
-function formElement(model: VideoModel, blocked = false) {
+function formElement(
+  model: VideoModel,
+  blocked: boolean,
+  callbacks: {
+    onBusy: (busy: boolean) => void
+    onIntent: (key: string) => void
+  }
+) {
   return (
     <VideoForm
       key={`${model.plugin_key}:${model.model}`}
@@ -81,30 +97,44 @@ function formElement(model: VideoModel, blocked = false) {
       group='default'
       identity='701:test-session'
       blocked={blocked}
-      onBusy={() => {}}
-      onIntent={() => {}}
+      onBusy={callbacks.onBusy}
+      onIntent={callbacks.onIntent}
     />
   )
 }
 
 function renderForm(model = millu, blocked = false) {
+  const callbacks = {
+    onBusy: vi.fn<(busy: boolean) => void>(),
+    onIntent: vi.fn<(key: string) => void>(),
+  }
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const view = render(
     <QueryClientProvider client={client}>
-      {formElement(model, blocked)}
+      {formElement(model, blocked, callbacks)}
     </QueryClientProvider>
   )
   return {
     ...view,
+    ...callbacks,
     changeModel: (next: VideoModel) =>
       view.rerender(
         <QueryClientProvider client={client}>
-          {formElement(next)}
+          {formElement(next, false, callbacks)}
         </QueryClientProvider>
       ),
   }
+}
+
+async function openGenerationConfirmation() {
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat runs' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate video' }))
+  const confirmation = await screen.findByRole('alertdialog')
+  return within(confirmation).getByRole('button', { name: 'Generate video' })
 }
 
 describe('video generation form', () => {
@@ -159,7 +189,10 @@ describe('video generation form', () => {
     expect(screen.getByLabelText('Reference image URL')).toHaveValue('')
   })
 
-  test('a charge confirmation sends the reference role and prevents a second POST while pending', async () => {
+  test('without randomUUID, confirmation sends the reference role and prevents a second POST while pending', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    })
     let finish: (value: {
       data: { success: true; data: { task_id: string; state: string } }
     }) => void = () => {}
@@ -198,7 +231,9 @@ describe('video generation form', () => {
         role: 'reference_image',
       },
     ])
-    expect(config?.headers?.['Idempotency-Key']).toMatch(/^[a-z\d-]{36}$/)
+    expect(config?.headers?.['Idempotency-Key']).toMatch(
+      /^[a-zA-Z0-9_-]{16,128}$/
+    )
     expect(config?.headers?.['X-Auth-Session']).toBe('test-session')
     expect(screen.getByRole('button', { name: 'Submitting...' })).toBeDisabled()
     finish({
@@ -212,6 +247,82 @@ describe('video generation form', () => {
         screen.getByRole('button', { name: 'Generate video' })
       ).toBeEnabled()
     )
+  })
+
+  test('when key generation fails, confirmation stays usable and the next attempt can submit', async () => {
+    vi.mocked(nanoid).mockImplementationOnce(() => {
+      throw new Error('Random source unavailable')
+    })
+    const errorToast = vi.spyOn(toast, 'error').mockReturnValue('error-toast')
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        data: { task_id: 'task_public', state: 'accepted' },
+      },
+    })
+    const view = renderForm()
+    const confirmation = await openGenerationConfirmation()
+    fireEvent.click(confirmation)
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith('Random source unavailable')
+    )
+    expect(post).not.toHaveBeenCalled()
+    expect(view.onIntent).not.toHaveBeenCalled()
+    expect(view.onBusy).not.toHaveBeenCalled()
+    expect(confirmation).toBeEnabled()
+    expect(screen.getByRole('alertdialog')).toBeVisible()
+    fireEvent.click(confirmation)
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(view.onBusy).toHaveBeenLastCalledWith(false))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate video' })).toBeEnabled()
+    expect(errorToast).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    {
+      name: 'a rejected replay shows its error code and allows another generation',
+      errorCode: 'upstream_rejected',
+      message: 'Operation failed (upstream_rejected)',
+    },
+    {
+      name: 'a rejected replay without an error code shows the failure fallback',
+      errorCode: undefined,
+      message: 'Operation failed',
+    },
+  ])('$name', async ({ errorCode, message }) => {
+    const errorToast = vi.spyOn(toast, 'error').mockReturnValue('error-toast')
+    const post = vi
+      .spyOn(api, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          data: { task_id: '', state: 'rejected', error_code: errorCode },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          data: { task_id: 'task_public', state: 'accepted' },
+        },
+      })
+    const view = renderForm()
+    fireEvent.click(await openGenerationConfirmation())
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith(message))
+    expect(errorToast).toHaveBeenCalledTimes(1)
+    expect(view.onIntent).toHaveBeenLastCalledWith('')
+    await waitFor(() => expect(view.onBusy).toHaveBeenLastCalledWith(false))
+    expect(screen.getByRole('button', { name: 'Generate video' })).toBeEnabled()
+
+    fireEvent.click(await openGenerationConfirmation())
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(view.onIntent).toHaveBeenLastCalledWith(''))
+    await waitFor(() => expect(view.onBusy).toHaveBeenLastCalledWith(false))
+    expect(post.mock.calls[1][2]?.headers?.['Idempotency-Key']).not.toBe(
+      post.mock.calls[0][2]?.headers?.['Idempotency-Key']
+    )
+    expect(errorToast).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Generate video' })).toBeEnabled()
   })
 
   test('an unresolved submission disables generation without presenting automatic POST retry', () => {

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
@@ -119,10 +120,16 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 		return nil, err
 	}
 	ids := []int{}
+	seen := make(map[int]struct{})
 	for _, ability := range abilities {
-		if slices.Contains(groups, ability.Group) {
-			ids = append(ids, ability.ChannelId)
+		if !slices.Contains(groups, ability.Group) {
+			continue
 		}
+		if _, exists := seen[ability.ChannelId]; exists {
+			continue
+		}
+		seen[ability.ChannelId] = struct{}{}
+		ids = append(ids, ability.ChannelId)
 	}
 	channels, err := model.GetChannelsByIds(ids)
 	if err != nil {
@@ -148,6 +155,7 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 		}
 		filters := []dto.ChannelFilter{{Kind: dto.FilterTaskPluginIdentity, TaskPluginKey: plugin.Meta.Key, TaskPluginChannelTypes: plugin.Meta.ChannelTypes}}
 		models := make(map[string][]string)
+		invalidMappings := make(map[string]bool)
 		for _, name := range declared {
 			models[name] = nil
 		}
@@ -168,18 +176,26 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 			// Use the same mapping resolver as task execution, including chains.
 			mapped, mapErr := model.ResolveChannelTaskModel(channel, ability.Model)
 			if mapErr != nil {
-				models[ability.Model] = append(models[ability.Model], "")
+				invalidMappings[ability.Model] = true
 				continue
 			}
-			if !slices.Contains(declared, mapped) {
+			mappedDeclared := slices.Contains(declared, mapped)
+			endpointMapping := plugin.Meta.Key == "doubao" && strings.HasPrefix(mapped, "ep-") && slices.Contains(declared, ability.Model)
+			if !mappedDeclared && !endpointMapping {
+				invalidMappings[ability.Model] = true
 				continue
 			}
 			models[ability.Model] = append(models[ability.Model], mapped)
 		}
 		for name, targets := range models {
-			declaredName := name
+			mappedName := name
 			if len(targets) > 0 {
-				declaredName = targets[0]
+				mappedName = targets[0]
+			}
+			declaredName := mappedName
+			// Ark endpoint IDs keep the public model's capability profile.
+			if plugin.Meta.Key == "doubao" && strings.HasPrefix(mappedName, "ep-") {
+				declaredName = name
 			}
 			cap, supported := VideoPlaygroundCapabilitiesFor(plugin, declaredName)
 			if !supported {
@@ -193,14 +209,20 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 			for _, target := range targets {
 				// A conservative target agreement avoids a union of incompatible
 				// capabilities followed by random channel assignment.
-				if target != declaredName {
+				if target != mappedName {
 					option.Available = false
 					option.DisabledReason = "ambiguous_model_mapping"
 				}
 				expr, exists := billing_setting.ResolveTaskBillingExpr(plugin.Meta.Key, name, target)
 				if exists || billing_setting.GetBillingMode(name) == billing_setting.BillingModeTieredExpr {
-					schema, _ := plugin.Meta.UsageForModels(target, name)
-					if !exists || !billing_setting.TaskExprCompatible(expr, schema) {
+					_, compileErr := billingexpr.CompileFromCache(expr)
+					validPrice := exists && compileErr == nil && strings.TrimSpace(expr) != "" && !billingexpr.UsesFixedPricing(expr)
+					shared := generation.SharedModel(name) || generation.SharedModel(target)
+					if validPrice && shared {
+						schema, _ := plugin.Meta.UsageForModels(target, name)
+						validPrice = billing_setting.TaskExprCompatible(expr, schema)
+					}
+					if !validPrice {
 						option.Available = false
 						option.DisabledReason = "model_price_error"
 					}
@@ -213,6 +235,12 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 						option.DisabledReason = "model_price_error"
 					}
 				}
+			}
+			// These channels remain selectable, so an invalid mapping must block
+			// submission even when another channel supplies valid capabilities.
+			if invalidMappings[name] {
+				option.Available = false
+				option.DisabledReason = "ambiguous_model_mapping"
 			}
 			options = append(options, option)
 		}

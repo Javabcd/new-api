@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
+import { nanoid } from 'nanoid'
 import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -37,6 +38,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
+import { createServerError } from '@/lib/server-error-message'
 
 import { submitVideo } from '../api'
 import {
@@ -65,14 +67,27 @@ export function VideoForm(props: {
   const [confirmation, setConfirmation] = useState<VideoRequest | null>(null)
   const sending = useRef(false)
   const mutation = useMutation({
-    mutationFn: (intent: {
+    mutationFn: async (intent: {
       key: string
       payload: VideoRequest
       sessionID: string
-    }) => submitVideo(intent.payload, intent.key, intent.sessionID),
+    }) => {
+      const result = await submitVideo(
+        intent.payload,
+        intent.key,
+        intent.sessionID
+      )
+      if (result.state === 'rejected') {
+        props.onIntent('')
+        let message = t('Operation failed')
+        if (result.error_code) message += ` (${result.error_code})`
+        throw createServerError(result, message)
+      }
+      return result
+    },
     retry: false,
     onSuccess: (result) => {
-      if (result.state === 'accepted' || result.state === 'rejected') {
+      if (result.state === 'accepted') {
         props.onIntent('')
       }
       void client.invalidateQueries({
@@ -88,6 +103,12 @@ export function VideoForm(props: {
         props.onIntent('')
       }
       handleServerError(error)
+      void client.invalidateQueries({
+        queryKey: ['video-playground', props.identity, 'submission'],
+      })
+      void client.invalidateQueries({
+        queryKey: ['video-playground', props.identity, 'unresolved'],
+      })
     },
     onSettled: () => {
       sending.current = false
@@ -280,8 +301,14 @@ export function VideoForm(props: {
         isLoading={mutation.isPending}
         handleConfirm={() => {
           if (!confirmation || sending.current || props.blocked) return
+          let key: string
+          try {
+            key = nanoid()
+          } catch (error) {
+            handleServerError(error, t('Operation failed'))
+            return
+          }
           sending.current = true
-          const key = crypto.randomUUID()
           props.onIntent(key)
           props.onBusy(true)
           mutation.mutate({

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -51,10 +52,15 @@ func SubmitVideoPlayground(c *gin.Context) {
 	info.PublicTaskID = record.TaskID
 	info.Action = c.GetString("task_action")
 	outcome, taskErr := executeTaskSubmission(c, info)
+	rejectionValue, _ := c.Get("video_playground_upstream_rejection")
+	rejection, _ := rejectionValue.(*dto.TaskError)
+	if rejection != nil {
+		taskErr = rejection
+	}
 	state, code := "accepted", ""
 	if taskErr != nil {
 		state, code = "rejected", taskErr.Code
-		if c.GetBool("video_playground_upstream_attempted") {
+		if c.GetBool("video_playground_upstream_attempted") && rejection == nil {
 			state, code = "unknown", "submission_unknown"
 		}
 		// A failure after the existing persistence barrier still has a task.

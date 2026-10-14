@@ -78,6 +78,6 @@ func GetVideoPlaygroundTasks(ctx context.Context, userID, offset, limit int) ([]
 	var tasks []*Task
 	err := DB.WithContext(ctx).Where("user_id = ? AND platform IN ? AND action IN ?", userID,
 		[]constant.TaskPlatform{"doubao", "millu-seedance", "ctyun-cdance", "moma-seedance", "54"},
-		[]string{"text_to_video", "image_to_video"}).Order("id desc").Offset(offset).Limit(limit).Find(&tasks).Error
+		[]string{constant.TaskActionTextToVideo, constant.TaskActionImageToVideo, "textGenerate", "generate"}).Order("id desc").Offset(offset).Limit(limit).Find(&tasks).Error
 	return tasks, err
 }

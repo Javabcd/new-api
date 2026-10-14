@@ -360,7 +360,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// or 202 Accepted, and parseSubmitResponse receives the exact status code.
 	if resp.StatusCode/100 != 2 {
 		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		taskErr := service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		// Timeouts, conflicts and proxy cancellation can follow acceptance.
+		// Preserve definite rejections before later cancellation/error wrapping.
+		if c.GetBool("video_playground_executed") && resp.StatusCode/100 == 4 &&
+			resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusConflict && resp.StatusCode != 499 {
+			c.Set("video_playground_upstream_rejection", taskErr)
+		}
+		return nil, taskErr
 	}
 
 	// 10. Parse only. The controller presents the response after the durable

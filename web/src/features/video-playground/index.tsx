@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -115,6 +115,33 @@ function VideoPlaygroundContent(props: {
       query.state.data?.some((item) => item.state === 'pending') ? 5000 : false,
     refetchIntervalInBackground: false,
   })
+  const acceptedTaskID =
+    submission.isSuccess && submission.data.state === 'accepted'
+      ? submission.data.task_id
+      : ''
+  useEffect(() => {
+    if (!acceptedTaskID) return
+    void client.invalidateQueries({
+      queryKey: ['video-playground', props.identity, 'tasks'],
+    })
+    void client.invalidateQueries({
+      queryKey: ['video-playground', props.identity, 'unresolved'],
+    })
+  }, [acceptedTaskID, client, props.identity])
+
+  const previousUnresolvedTaskIDs = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!unresolved.isSuccess) return
+    const currentTaskIDs = new Set(unresolved.data.map((item) => item.task_id))
+    const previousTaskIDs = previousUnresolvedTaskIDs.current
+    previousUnresolvedTaskIDs.current = currentTaskIDs
+    if ([...previousTaskIDs].some((id) => !currentTaskIDs.has(id))) {
+      void client.invalidateQueries({
+        queryKey: ['video-playground', props.identity, 'tasks'],
+      })
+    }
+  }, [client, props.identity, unresolved.data, unresolved.isSuccess])
+
   const options = models.data || []
   const selected = options.find(
     (model) => `${model.plugin_key}::${model.model}` === selection
@@ -262,6 +289,7 @@ function VideoPlaygroundContent(props: {
           <CardContent>
             {selectedTask?.status === 'SUCCESS' ? (
               <TaskArtifacts
+                key={selectedTask.task_id}
                 taskId={selectedTask.task_id}
                 enabled
                 queryScope={baseKey}

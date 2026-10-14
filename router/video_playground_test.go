@@ -44,6 +44,8 @@ type videoPlaygroundFixture struct {
 	mu           sync.Mutex
 	fail         bool
 	loseResponse bool
+	submitStatus int
+	submitBody   string
 	entered      chan struct{}
 	release      chan struct{}
 }
@@ -132,6 +134,7 @@ func newVideoPlaygroundFixture(t *testing.T, dsn string) *videoPlaygroundFixture
 			f.requests[key] = append(f.requests[key], body)
 			count, lose := len(f.requests[key]), f.loseResponse
 			entered, release := f.entered, f.release
+			submitStatus, submitBody := f.submitStatus, f.submitBody
 			f.mu.Unlock()
 			if entered != nil {
 				close(entered)
@@ -142,6 +145,11 @@ func newVideoPlaygroundFixture(t *testing.T, dsn string) *videoPlaygroundFixture
 				if err == nil {
 					_ = conn.Close()
 				}
+				return
+			}
+			if submitStatus != 0 {
+				w.WriteHeader(submitStatus)
+				_, _ = w.Write([]byte(submitBody))
 				return
 			}
 			_, _ = fmt.Fprintf(w, `{"id":%q}`, fmt.Sprintf("%s-private-%d", key, count))
@@ -226,6 +234,145 @@ func TestVideoPlaygroundProviderContracts(t *testing.T) {
 				t.Skip("isolated database DSN is not configured")
 			}
 			f := newVideoPlaygroundFixture(t, dsn)
+			t.Run("upstream rejection and ambiguous failures never resubmit", func(t *testing.T) {
+				for _, test := range []struct {
+					name   string
+					status int
+					body   string
+					state  string
+				}{
+					{"invalid duration", 400, `{"error":{"message":"unsupported duration"}}`, "rejected"},
+					{"invalid parameters", 422, `{"error":{"message":"unsupported resolution"}}`, "rejected"},
+					{"rate limit", 429, `{"error":{"message":"rate limited"}}`, "rejected"},
+					{"upstream timeout", 408, `{"error":{"message":"timeout"}}`, "unknown"},
+					{"upstream conflict", 409, `{"error":{"message":"conflict"}}`, "unknown"},
+					{"upstream cancellation", 499, `{"error":{"message":"cancelled"}}`, "unknown"},
+					{"upstream server failure", 500, `{"error":{"message":"server error"}}`, "unknown"},
+					{"upstream gateway failure", 502, `{"error":{"message":"gateway error"}}`, "unknown"},
+					{"upstream redirect", 307, `{"error":{"message":"redirect"}}`, "unknown"},
+					{"accepted malformed response", 200, `{`, "unknown"},
+				} {
+					t.Run(test.name, func(t *testing.T) {
+						f.mu.Lock()
+						f.submitStatus, f.submitBody = test.status, test.body
+						beforeRequests := len(f.requests["moma-seedance"])
+						f.mu.Unlock()
+						t.Cleanup(func() {
+							f.mu.Lock()
+							f.submitStatus, f.submitBody = 0, ""
+							f.mu.Unlock()
+						})
+						var before model.User
+						require.NoError(t, model.DB.First(&before, 701).Error)
+						key := fmt.Sprintf("upstream_status_%d_0000000000", test.status)
+						body := videoPlaygroundBody(t, "moma-seedance", "doubao-seedance-2-0-260128", false)
+						response := f.request("POST", "/pg/video/tasks", f.access, key, body)
+						if test.state == "rejected" {
+							require.Equal(t, test.status, response.Code, response.Body.String())
+							if test.status != 429 {
+								assert.Contains(t, response.Body.String(), "unsupported")
+							}
+						} else {
+							require.Equal(t, 200, response.Code, response.Body.String())
+							assert.Contains(t, response.Body.String(), `"state":"unknown"`)
+						}
+						record, err := model.GetVideoPlaygroundSubmission(t.Context(), 701, key)
+						require.NoError(t, err)
+						assert.Equal(t, test.state, record.State)
+						_, exists, err := model.GetByTaskId(701, record.TaskID)
+						require.NoError(t, err)
+						assert.False(t, exists)
+						replay := f.request("POST", "/pg/video/tasks", f.access, key, body)
+						require.Equal(t, 200, replay.Code, replay.Body.String())
+						assert.Contains(t, replay.Body.String(), `"state":"`+test.state+`"`)
+						f.mu.Lock()
+						assert.Len(t, f.requests["moma-seedance"], beforeRequests+1)
+						f.mu.Unlock()
+						// BillingSession refunds asynchronously on every database.
+						require.EventuallyWithT(t, func(collect *assert.CollectT) {
+							var after model.User
+							if assert.NoError(collect, model.DB.First(&after, 701).Error) {
+								assert.Equal(collect, before.Quota, after.Quota)
+							}
+						}, 5*time.Second, 10*time.Millisecond)
+					})
+				}
+			})
+			t.Run("single provider stored expressions retain removed usage fields", func(t *testing.T) {
+				const legacyModel = "doubao-seedance-1-0-pro-250528"
+				const legacyAlias = "video-legacy-alias"
+				const sharedModel = "doubao-seedance-2-0-260128"
+				const sharedAlias = "video-shared-alias"
+				var existing model.Channel
+				require.NoError(t, model.DB.Where("name = ?", "doubao").First(&existing).Error)
+				legacyChannel := existing
+				legacyChannel.Id, legacyChannel.Name = 0, "doubao-legacy"
+				legacyChannel.Models = strings.Join([]string{legacyModel, legacyAlias, sharedAlias}, ",")
+				mapping := fmt.Sprintf(`{%q:%q,%q:%q}`, legacyAlias, legacyModel, sharedAlias, sharedModel)
+				legacyChannel.ModelMapping = &mapping
+				require.NoError(t, legacyChannel.Insert())
+				settings := config.GlobalConfig.Get("billing_setting").(*billing_setting.BillingSetting)
+				previous := maps.Clone(settings.PluginBillingExpr)
+				t.Cleanup(func() { settings.PluginBillingExpr = previous })
+				legacyKey := billing_setting.PluginBillingExprKey("doubao", legacyModel)
+				settings.PluginBillingExpr[legacyKey] = `u("video_input") == "none" ? tier("legacy", u("tokens") * 0.000001) : tier("video", u("tokens") * 0.000002)`
+				settings.PluginBillingExpr[billing_setting.PluginBillingExprKey("doubao", sharedModel)] = `tier("invalid", u("missing_field") * 0.001)`
+				options, err := service.VideoPlaygroundModels(jsplugin.DefaultRegistry.Generation(), []string{"default"})
+				require.NoError(t, err)
+				byName := make(map[string]dto.VideoPlaygroundModel)
+				for _, option := range options {
+					if option.PluginKey == "doubao" {
+						byName[option.Model] = option
+					}
+				}
+				for _, name := range []string{sharedModel, sharedAlias} {
+					require.Contains(t, byName, name)
+					assert.False(t, byName[name].Available)
+					assert.Equal(t, "model_price_error", byName[name].DisabledReason)
+				}
+				for _, name := range []string{legacyModel, legacyAlias} {
+					require.Contains(t, byName, name)
+					assert.True(t, byName[name].Available, byName[name].DisabledReason)
+					body, err := common.Marshal(dto.VideoPlaygroundRequest{PluginKey: "doubao", Model: name, Group: "default", Prompt: "A cat runs through a meadow", Parameters: dto.VideoPlaygroundParameters{Duration: common.GetPointer(5), Resolution: common.GetPointer("720p")}})
+					require.NoError(t, err)
+					response := f.request("POST", "/pg/video/tasks", f.access, "legacy_expression_"+name, body)
+					require.Equal(t, 200, response.Code, response.Body.String())
+					assert.Contains(t, response.Body.String(), `"state":"accepted"`)
+				}
+				service.RunTaskPollingOnce(t.Context(), nil)
+				for _, expression := range []string{"", `tier("broken",`, `tier("request", fixed(0.01))`} {
+					settings.PluginBillingExpr[legacyKey] = expression
+					options, err := service.VideoPlaygroundModels(jsplugin.DefaultRegistry.Generation(), []string{"default"})
+					require.NoError(t, err)
+					for _, option := range options {
+						if option.PluginKey == "doubao" && option.Model == legacyModel {
+							assert.False(t, option.Available, expression)
+							assert.Equal(t, "model_price_error", option.DisabledReason)
+						}
+					}
+				}
+			})
+			t.Run("duplicate channel abilities do not exhaust SQL variables", func(t *testing.T) {
+				var channel model.Channel
+				require.NoError(t, model.DB.Where("name = ?", "moma-seedance").First(&channel).Error)
+				// SQLite accepts at most 32766 bind variables in its default build.
+				// Each distinct chat model used to append the same channel ID.
+				abilities := make([]model.Ability, 33000)
+				for i := range abilities {
+					abilities[i] = model.Ability{Group: "default", Model: fmt.Sprintf("video-review-chat-%d", i), ChannelId: channel.Id, Enabled: true}
+				}
+				require.NoError(t, model.DB.CreateInBatches(abilities, 128).Error)
+				t.Cleanup(func() {
+					require.NoError(t, model.DB.Where("channel_id = ? AND model LIKE ?", channel.Id, "video-review-chat-%").Delete(&model.Ability{}).Error)
+				})
+				response := f.request("GET", "/pg/video/models", f.access, "", nil)
+				require.Equal(t, 200, response.Code, response.Body.String())
+				assert.Contains(t, response.Body.String(), "moma-seedance")
+				response = f.request("POST", "/pg/video/tasks", f.access, "catalog_duplicate_abilities_0000", videoPlaygroundBody(t, "moma-seedance", "doubao-seedance-2-0-260128", false))
+				require.Equal(t, 200, response.Code, response.Body.String())
+				assert.Contains(t, response.Body.String(), `"state":"accepted"`)
+				service.RunTaskPollingOnce(t.Context(), nil)
+			})
 			for _, test := range []struct{ key, name string }{{"doubao", "doubao-seedance-2-0-260128"}, {"millu-seedance", "millu-sd-x-2-5-260801"}, {"ctyun-cdance", "cdance2.0-0807"}, {"moma-seedance", "doubao-seedance-2-0-260128"}} {
 				for _, reference := range []bool{false, true} {
 					t.Run(fmt.Sprintf("%s/reference=%t", test.key, reference), func(t *testing.T) {
@@ -382,7 +529,52 @@ func TestVideoPlaygroundProviderContracts(t *testing.T) {
 					assert.Equal(t, first.TaskID, replay.TaskID)
 				})
 			}
-			assert.NotContains(t, f.request("GET", "/pg/video/tasks", f.access, "", nil).Body.String(), "task_existing_image")
+			t.Run("history includes legacy video actions and excludes images and other users", func(t *testing.T) {
+				cases := []struct {
+					id       string
+					platform constant.TaskPlatform
+					action   string
+					userID   int
+					visible  bool
+				}{
+					{"task_history_legacy_i2v", "54", "generate", 701, true},
+					{"task_history_legacy_t2v", "54", "textGenerate", 701, true},
+					{"task_history_canonical_i2v", "doubao", constant.TaskActionImageToVideo, 701, true},
+					{"task_history_canonical_t2v", "moma-seedance", constant.TaskActionTextToVideo, 701, true},
+					{"task_history_text_image", "doubao", "text_to_image", 701, false},
+					{"task_history_image_image", "54", "image_to_image", 701, false},
+					{"task_history_other_user", "54", "generate", 702, false},
+					{"task_history_other_provider", "vidu", "generate", 701, false},
+				}
+				for _, test := range cases {
+					require.NoError(t, model.DB.Create(&model.Task{
+						TaskID: test.id, UserId: test.userID, Platform: test.platform, Action: test.action,
+						Status: model.TaskStatusSuccess, Properties: model.Properties{OriginModelName: "doubao-seedance-2-0-260128"},
+					}).Error)
+				}
+				response := f.request("GET", "/pg/video/tasks", f.access, "", nil)
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				var result struct {
+					Success bool `json:"success"`
+					Data    []struct {
+						TaskID string `json:"task_id"`
+					} `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+				require.True(t, result.Success)
+				ids := make([]string, 0, len(result.Data))
+				for _, task := range result.Data {
+					ids = append(ids, task.TaskID)
+				}
+				for _, test := range cases {
+					if test.visible {
+						assert.Contains(t, ids, test.id)
+					} else {
+						assert.NotContains(t, ids, test.id)
+					}
+				}
+				assert.NotContains(t, ids, "task_existing_image")
+			})
 		})
 	}
 }
@@ -538,20 +730,140 @@ func TestVideoPlaygroundChannelIdentityAndAliases(t *testing.T) {
 		assert.Equal(t, "doubao-seedance-2-0-260128", f.requests["doubao"][0]["model"])
 		f.mu.Unlock()
 	})
-	t.Run("different channel mapping targets are disabled", func(t *testing.T) {
-		f := newVideoPlaygroundFixture(t, "")
-		var channel model.Channel
-		require.NoError(t, model.DB.Where("name = ?", "doubao").First(&channel).Error)
-		channel.Id, channel.Name = 0, "doubao-second"
-		channel.ModelMapping = common.GetPointer(`{"doubao-seedance-2-0-260128":"doubao-seedance-2-0-fast-260128"}`)
-		require.NoError(t, channel.Insert())
-		response := f.request("POST", "/pg/video/tasks", f.access, "ambiguous_mapping_intent_0000", videoPlaygroundBody(t, "doubao", "doubao-seedance-2-0-260128", false))
-		assert.Equal(t, 400, response.Code, response.Body.String())
-		assert.Contains(t, response.Body.String(), "ambiguous_model_mapping")
-		f.mu.Lock()
-		assert.Empty(t, f.requests)
-		f.mu.Unlock()
-	})
+	for _, test := range []struct {
+		name, mapping string
+		secondChannel bool
+	}{
+		{"declared model mapped to an Ark endpoint", `{"doubao-seedance-2-0-fast-260128":"ep-video-test"}`, false},
+		{"declared model mapped through a chain to an Ark endpoint", `{"doubao-seedance-2-0-fast-260128":"video-endpoint-alias","video-endpoint-alias":"ep-video-test"}`, false},
+		{"matching channel endpoints remain available", `{"doubao-seedance-2-0-fast-260128":"ep-video-test"}`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newVideoPlaygroundFixture(t, "")
+			const publicModel = "doubao-seedance-2-0-fast-260128"
+			const endpoint = "ep-video-test"
+			const endpointExpr = `tier("endpoint", u("tokens") * 0.000002)`
+			settings := config.GlobalConfig.Get("billing_setting").(*billing_setting.BillingSetting)
+			settings.PluginBillingExpr[billing_setting.PluginBillingExprKey("doubao", endpoint)] = endpointExpr
+			var channel model.Channel
+			require.NoError(t, model.DB.Where("name = ?", "doubao").First(&channel).Error)
+			channel.Models = publicModel
+			channel.ModelMapping = common.GetPointer(test.mapping)
+			require.NoError(t, channel.Update())
+			if test.secondChannel {
+				channel.Id, channel.Name = 0, "doubao-second"
+				require.NoError(t, channel.Insert())
+			}
+			catalog := f.request("GET", "/pg/video/models?group=default", f.access, "", nil)
+			require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+			var result struct {
+				Data struct {
+					Models []dto.VideoPlaygroundModel `json:"models"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &result))
+			var option *dto.VideoPlaygroundModel
+			for i := range result.Data.Models {
+				if result.Data.Models[i].PluginKey == "doubao" && result.Data.Models[i].Model == publicModel {
+					option = &result.Data.Models[i]
+					break
+				}
+			}
+			require.NotNil(t, option)
+			require.True(t, option.Available, option.DisabledReason)
+			assert.Equal(t, []string{"480p", "720p"}, option.Capabilities.Resolutions)
+			response := f.request("POST", "/pg/video/tasks", f.access, "mapped_ark_endpoint_0000", videoPlaygroundBody(t, "doubao", publicModel, false))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var task model.Task
+			require.NoError(t, model.DB.Where("user_id = ? AND action = ?", 701, "text_to_video").First(&task).Error)
+			assert.Equal(t, publicModel, task.Properties.OriginModelName)
+			assert.Equal(t, endpoint, task.Properties.UpstreamModelName)
+			require.NotNil(t, task.PrivateData.BillingContext)
+			require.NotNil(t, task.PrivateData.BillingContext.TieredSnapshot)
+			assert.Equal(t, endpointExpr, task.PrivateData.BillingContext.TieredSnapshot.ExprString)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			require.Len(t, f.requests["doubao"], 1)
+			assert.Equal(t, endpoint, f.requests["doubao"][0]["model"])
+		})
+	}
+	for _, test := range []struct {
+		name, firstMapping, secondMapping string
+		firstPriority, secondPriority     int64
+	}{
+		{"different declared channel targets are disabled", "", `{"doubao-seedance-2-0-260128":"doubao-seedance-2-0-fast-260128"}`, 0, 100},
+		{"different Ark channel endpoints are disabled", `{"doubao-seedance-2-0-260128":"ep-first"}`, `{"doubao-seedance-2-0-260128":"ep-second"}`, 0, 100},
+		{"a higher priority unknown target disables a valid first channel", "", `{"doubao-seedance-2-0-260128":"unknown-video-model"}`, 0, 100},
+		{"a higher priority unknown first channel disables a valid second channel", `{"doubao-seedance-2-0-260128":"unknown-video-model"}`, "", 100, 0},
+		{"a cyclic target disables a valid first channel", "", `{"doubao-seedance-2-0-260128":"video-loop","video-loop":"doubao-seedance-2-0-260128"}`, 0, 100},
+		{"a cyclic first channel keeps the model visible but disabled", `{"doubao-seedance-2-0-260128":"video-loop","video-loop":"doubao-seedance-2-0-260128"}`, "", 100, 0},
+		{"an invalid JSON mapping keeps the model visible but disabled", "{", "", 100, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newVideoPlaygroundFixture(t, "")
+			var channel model.Channel
+			require.NoError(t, model.DB.Where("name = ?", "doubao").First(&channel).Error)
+			channel.ModelMapping = common.GetPointer(test.firstMapping)
+			channel.Priority = common.GetPointer(test.firstPriority)
+			require.NoError(t, channel.Update())
+			channel.Id, channel.Name = 0, "doubao-second"
+			channel.ModelMapping = common.GetPointer(test.secondMapping)
+			channel.Priority = common.GetPointer(test.secondPriority)
+			require.NoError(t, channel.Insert())
+			catalog := f.request("GET", "/pg/video/models?group=default", f.access, "", nil)
+			require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+			var result struct {
+				Data struct {
+					Models []dto.VideoPlaygroundModel `json:"models"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &result))
+			var option *dto.VideoPlaygroundModel
+			for i := range result.Data.Models {
+				if result.Data.Models[i].PluginKey == "doubao" && result.Data.Models[i].Model == "doubao-seedance-2-0-260128" {
+					option = &result.Data.Models[i]
+					break
+				}
+			}
+			require.NotNil(t, option)
+			assert.False(t, option.Available)
+			assert.Equal(t, "ambiguous_model_mapping", option.DisabledReason)
+			var before model.User
+			require.NoError(t, model.DB.First(&before, 701).Error)
+			response := f.request("POST", "/pg/video/tasks", f.access, "ambiguous_mapping_intent_0000", videoPlaygroundBody(t, "doubao", "doubao-seedance-2-0-260128", false))
+			assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "ambiguous_model_mapping")
+			var after model.User
+			require.NoError(t, model.DB.First(&after, 701).Error)
+			assert.Equal(t, before.Quota, after.Quota)
+			var tasks int64
+			require.NoError(t, model.DB.Model(&model.Task{}).Where("user_id = ? AND action IN ?", 701, []string{constant.TaskActionTextToVideo, constant.TaskActionImageToVideo}).Count(&tasks).Error)
+			assert.Zero(t, tasks)
+			f.mu.Lock()
+			assert.Empty(t, f.requests)
+			f.mu.Unlock()
+		})
+	}
+	for _, test := range []struct{ name, plugin, model, mapping string }{
+		{"undeclared public alias cannot infer an endpoint model", "doubao", "video-alias", `{"video-alias":"ep-video-test"}`},
+		{"an unknown upstream model remains unavailable", "doubao", "doubao-seedance-2-0-260128", `{"doubao-seedance-2-0-260128":"unknown-video-model"}`},
+		{"a cyclic endpoint mapping remains unavailable", "doubao", "doubao-seedance-2-0-260128", `{"doubao-seedance-2-0-260128":"ep-video-test","ep-video-test":"doubao-seedance-2-0-260128"}`},
+		{"other providers do not accept Ark endpoints", "millu-seedance", "millu-sd-x-2-5-260801", `{"millu-sd-x-2-5-260801":"ep-video-test"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newVideoPlaygroundFixture(t, "")
+			var channel model.Channel
+			require.NoError(t, model.DB.Where("name = ?", test.plugin).First(&channel).Error)
+			channel.Models = test.model
+			channel.ModelMapping = common.GetPointer(test.mapping)
+			require.NoError(t, channel.Update())
+			response := f.request("POST", "/pg/video/tasks", f.access, "unsupported_mapping_0000", videoPlaygroundBody(t, test.plugin, test.model, false))
+			assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			f.mu.Lock()
+			assert.Empty(t, f.requests)
+			f.mu.Unlock()
+		})
+	}
 	t.Run("auto group keeps the selected provider", func(t *testing.T) {
 		f := newVideoPlaygroundFixture(t, "")
 		previousGroups, previousAuto := setting.UserUsableGroups2JSONString(), setting.AutoGroups2JsonString()
