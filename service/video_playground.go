@@ -30,12 +30,11 @@ func VideoPlaygroundCapabilitiesFor(plugin *jsplugin.LoadedPlugin, name string) 
 	if plugin == nil {
 		return cap, false
 	}
-	key := plugin.Meta.Key
-	if key == "doubao" && plugin.Meta.Version != "1.2.1" || key != "doubao" && plugin.Meta.Version != "1.0.0" {
-		return cap, false
-	}
-	switch key {
+	switch plugin.Meta.Key {
 	case "doubao":
+		if plugin.Meta.Version != "1.2.1" {
+			return cap, false
+		}
 		switch name {
 		case "doubao-seedance-1-0-pro-250528", "doubao-seedance-1-0-lite-t2v", "doubao-seedance-1-0-lite-i2v", "doubao-seedance-1-5-pro-251215", "doubao-seedance-2-5-260628":
 			cap.Resolutions = []string{"480p", "720p", "1080p"}
@@ -60,6 +59,9 @@ func VideoPlaygroundCapabilitiesFor(plugin *jsplugin.LoadedPlugin, name string) 
 			cap.GenerateAudio = false
 		}
 	case "ctyun-cdance":
+		if plugin.Meta.Version != "1.0.0" {
+			return cap, false
+		}
 		cap.DurationRequired, cap.ResolutionRequired = true, true
 		switch name {
 		case "cdance2.0-0807":
@@ -72,12 +74,18 @@ func VideoPlaygroundCapabilitiesFor(plugin *jsplugin.LoadedPlugin, name string) 
 			return cap, false
 		}
 	case "millu-seedance":
+		if plugin.Meta.Version != "1.0.0" {
+			return cap, false
+		}
 		if name != "millu-sd-x-2-5-260801" {
 			return cap, false
 		}
 		cap.Resolutions = []string{"720p", "1080p"}
 		cap.Ratios = []string{"21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"}
 	case "moma-seedance":
+		if plugin.Meta.Version != "1.1.0" {
+			return cap, false
+		}
 		if name != "doubao-seedance-2-0-260128" && name != "doubao-seedance-2.0" {
 			return cap, false
 		}

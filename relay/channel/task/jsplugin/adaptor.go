@@ -1540,8 +1540,16 @@ func (a *TaskAdaptor) validateResolvedUsageValue(value any, usageSchema map[stri
 					return err
 				}
 			} else if limit, canonical := canonicalUsageLimit(key); canonical {
-				if err := validateUsageLimit(item, limit, true); err != nil {
-					return err
+				// An opted-in driver interprets -1 as automatic duration and
+				// reserves a bounded positive estimate. Usage facts themselves
+				// still pass the ordinary non-negative validation below.
+				number, numeric := usageNumber(item, true)
+				autoDuration := (key == "duration" || key == "seconds") && numeric && number == -1 &&
+					slices.Contains(a.plugin.Meta.RequiredCapabilities, pluginruntime.CapabilityTaskAutoDuration)
+				if !autoDuration {
+					if err := validateUsageLimit(item, limit, true); err != nil {
+						return err
+					}
 				}
 			}
 			if err := a.validateResolvedUsageValue(item, usageSchema); err != nil {

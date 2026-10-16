@@ -680,6 +680,32 @@ func TestVideoPlaygroundPersistenceFailureNeverResubmits(t *testing.T) {
 	f.mu.Unlock()
 }
 
+func TestVideoPlaygroundCapabilitiesVersionContract(t *testing.T) {
+	for _, test := range []struct {
+		name, plugin, version, model string
+		supported                    bool
+	}{
+		{"moma current version", "moma-seedance", "1.1.0", "doubao-seedance-2-0-260128", true},
+		{"moma upstream model alias", "moma-seedance", "1.1.0", "doubao-seedance-2.0", true},
+		{"moma previous version", "moma-seedance", "1.0.0", "doubao-seedance-2-0-260128", false},
+		{"moma unknown version", "moma-seedance", "1.1.1", "doubao-seedance-2-0-260128", false},
+		{"doubao verified version", "doubao", "1.2.1", "doubao-seedance-2-0-260128", true},
+		{"doubao unsupported version", "doubao", "1.1.0", "doubao-seedance-2-0-260128", false},
+		{"ctyun verified version", "ctyun-cdance", "1.0.0", "cdance2.0-0807", true},
+		{"ctyun unsupported version", "ctyun-cdance", "1.1.0", "cdance2.0-0807", false},
+		{"millu verified version", "millu-seedance", "1.0.0", "millu-sd-x-2-5-260801", true},
+		{"millu unsupported version", "millu-seedance", "1.1.0", "millu-sd-x-2-5-260801", false},
+		{"unknown plugin", "unknown-plugin", "1.0.0", "doubao-seedance-2-0-260128", false},
+		{"moma unknown model", "moma-seedance", "1.1.0", "unknown-video-model", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plugin := &jsplugin.LoadedPlugin{Meta: jsplugin.Meta{Key: test.plugin, Version: test.version}}
+			_, supported := service.VideoPlaygroundCapabilitiesFor(plugin, test.model)
+			assert.Equal(t, test.supported, supported)
+		})
+	}
+}
+
 func TestVideoPlaygroundChannelIdentityAndAliases(t *testing.T) {
 	for _, test := range []struct {
 		name, plugin, model string
@@ -693,6 +719,27 @@ func TestVideoPlaygroundChannelIdentityAndAliases(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			f := newVideoPlaygroundFixture(t, "")
 			require.NoError(t, model.DB.Model(&model.Channel{}).Where("name = ?", test.plugin).Update("type", test.typeID).Error)
+			if test.plugin == "moma-seedance" {
+				catalog := f.request("GET", "/pg/video/models?group=default", f.access, "", nil)
+				require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+				var result struct {
+					Data struct {
+						Models []dto.VideoPlaygroundModel `json:"models"`
+					} `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &result))
+				var option *dto.VideoPlaygroundModel
+				for i := range result.Data.Models {
+					candidate := &result.Data.Models[i]
+					if candidate.PluginKey == test.plugin && candidate.Model == test.model {
+						option = candidate
+						break
+					}
+				}
+				require.NotNil(t, option, "MoMa model must appear in the video playground catalog")
+				assert.Equal(t, "1.1.0", option.PluginVersion)
+				assert.True(t, option.Available, option.DisabledReason)
+			}
 			response := f.request("POST", "/pg/video/tasks", f.access, "channel_identity_intent_0000", videoPlaygroundBody(t, test.plugin, test.model, false))
 			require.Equal(t, test.status, response.Code, response.Body.String())
 			f.mu.Lock()
