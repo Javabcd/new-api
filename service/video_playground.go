@@ -83,7 +83,7 @@ func VideoPlaygroundCapabilitiesFor(plugin *jsplugin.LoadedPlugin, name string) 
 		cap.Resolutions = []string{"720p", "1080p"}
 		cap.Ratios = []string{"21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"}
 	case "moma-seedance":
-		if plugin.Meta.Version != "1.1.0" {
+		if plugin.Meta.Version != "1.1.0" && plugin.Meta.Version != "1.3.0" {
 			return cap, false
 		}
 		if name != "doubao-seedance-2-0-260128" && name != "doubao-seedance-2.0" {
@@ -129,15 +129,25 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 	}
 	ids := []int{}
 	seen := make(map[int]struct{})
+	names := []string{}
+	seenNames := make(map[string]struct{})
 	for _, ability := range abilities {
 		if !slices.Contains(groups, ability.Group) {
 			continue
+		}
+		if _, exists := seenNames[ability.Model]; !exists {
+			seenNames[ability.Model] = struct{}{}
+			names = append(names, ability.Model)
 		}
 		if _, exists := seen[ability.ChannelId]; exists {
 			continue
 		}
 		seen[ability.ChannelId] = struct{}{}
 		ids = append(ids, ability.ChannelId)
+	}
+	visible, err := model.GetModelCatalogVisibility(names)
+	if err != nil {
+		return nil, err
 	}
 	channels, err := model.GetChannelsByIds(ids)
 	if err != nil {
@@ -164,11 +174,8 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 		filters := []dto.ChannelFilter{{Kind: dto.FilterTaskPluginIdentity, TaskPluginKey: plugin.Meta.Key, TaskPluginChannelTypes: plugin.Meta.ChannelTypes}}
 		models := make(map[string][]string)
 		invalidMappings := make(map[string]bool)
-		for _, name := range declared {
-			models[name] = nil
-		}
 		for _, ability := range abilities {
-			if !slices.Contains(groups, ability.Group) {
+			if !slices.Contains(groups, ability.Group) || !visible[ability.Model] {
 				continue
 			}
 			channel := byID[ability.ChannelId]
@@ -180,6 +187,11 @@ func VideoPlaygroundModels(generation *jsplugin.RoutingGeneration, groups []stri
 			}
 			if matches, _ := model.ChannelSatisfiesFilters(channel, ability.Model, filters); !matches {
 				continue
+			}
+			// Keep configured declared models for submission error reporting,
+			// including invalid mappings, without seeding plugin defaults.
+			if _, exists := models[ability.Model]; !exists && slices.Contains(declared, ability.Model) {
+				models[ability.Model] = nil
 			}
 			// Use the same mapping resolver as task execution, including chains.
 			mapped, mapErr := model.ResolveChannelTaskModel(channel, ability.Model)

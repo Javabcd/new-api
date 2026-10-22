@@ -33,6 +33,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { VideoPlayground } from '..'
+import * as videoApi from '../api'
 import type { VideoModel, VideoSubmission, VideoTask } from '../types'
 
 const model: VideoModel = {
@@ -97,6 +98,7 @@ function mockRecoveryQueries() {
 }
 
 beforeEach(() => {
+  vi.spyOn(videoApi, 'getVideoModels').mockResolvedValue([model])
   sessionStorage.clear()
   useAuthStore
     .getState()

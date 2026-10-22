@@ -68,7 +68,7 @@ func newVideoPlaygroundFixture(t *testing.T, dsn string) *videoPlaygroundFixture
 	require.NoError(t, model.InitDB())
 	model.LOG_DB = model.DB
 	db := model.DB
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Task{}, &model.Log{}, &model.AuditLog{}, &model.Option{}, &model.UserSubscription{}, &model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Task{}, &model.Log{}, &model.AuditLog{}, &model.Option{}, &model.UserSubscription{}, &model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}))
 	// Representative pre-feature data must survive repeated startup migration.
 	baseline := &model.Task{TaskID: "task_existing_image", UserId: 701, Platform: "doubao", Action: "text_to_image", Status: model.TaskStatusSuccess, Properties: model.Properties{OriginModelName: "seedream"}}
 	baseline.SetData(map[string]any{"retained": true})
@@ -234,6 +234,127 @@ func TestVideoPlaygroundProviderContracts(t *testing.T) {
 				t.Skip("isolated database DSN is not configured")
 			}
 			f := newVideoPlaygroundFixture(t, dsn)
+			t.Run("catalog contains only configured available models", func(t *testing.T) {
+				var channel model.Channel
+				require.NoError(t, model.DB.Where("name = ?", "doubao").First(&channel).Error)
+				settings := config.GlobalConfig.Get("billing_setting").(*billing_setting.BillingSetting)
+				priceKey := billing_setting.PluginBillingExprKey("doubao", channel.Models)
+				for _, test := range []struct {
+					name, group, expression string
+					status                  int
+					visible                 bool
+				}{
+					{name: "configured models only", group: "default", status: common.ChannelStatusEnabled, visible: true},
+					{name: "disabled channel is omitted", group: "default", status: common.ChannelStatusManuallyDisabled},
+					{name: "another group is omitted", group: "video-other", status: common.ChannelStatusEnabled},
+					{name: "invalid price is omitted", group: "default", status: common.ChannelStatusEnabled, expression: `tier("invalid", u("missing_field"))`},
+				} {
+					t.Run(test.name, func(t *testing.T) {
+						originalPrice := settings.PluginBillingExpr[priceKey]
+						t.Cleanup(func() {
+							settings.PluginBillingExpr[priceKey] = originalPrice
+							restore := channel
+							require.NoError(t, restore.Update())
+						})
+						changed := channel
+						changed.Group, changed.Status = test.group, test.status
+						require.NoError(t, changed.Update())
+						if test.expression != "" {
+							settings.PluginBillingExpr[priceKey] = test.expression
+						}
+						response := f.request("GET", "/pg/video/models?group=default", f.access, "", nil)
+						require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+						var result struct {
+							Data struct {
+								Models []dto.VideoPlaygroundModel `json:"models"`
+							} `json:"data"`
+						}
+						require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+						keys := make([]string, 0, len(result.Data.Models))
+						for _, option := range result.Data.Models {
+							assert.True(t, option.Available, option.DisabledReason)
+							keys = append(keys, option.PluginKey+"::"+option.Model)
+						}
+						expected := []string{"ctyun-cdance::cdance2.0-0807", "millu-seedance::millu-sd-x-2-5-260801", "moma-seedance::doubao-seedance-2-0-260128"}
+						if test.visible {
+							expected = append(expected, "doubao::"+channel.Models)
+						}
+						assert.ElementsMatch(t, expected, keys)
+						options, err := service.VideoPlaygroundModels(jsplugin.DefaultRegistry.Generation(), []string{"default"})
+						require.NoError(t, err)
+						for _, option := range options {
+							assert.NotEqual(t, "doubao-seedance-2-0-fast-260128", option.Model, "plugin defaults must not create unconfigured candidates")
+						}
+					})
+				}
+			})
+			t.Run("catalog is empty when no channels are enabled", func(t *testing.T) {
+				var channelIDs []int
+				require.NoError(t, model.DB.Model(&model.Channel{}).Where("status = ?", common.ChannelStatusEnabled).Pluck("id", &channelIDs).Error)
+				t.Cleanup(func() {
+					require.NoError(t, model.DB.Model(&model.Channel{}).Where("id IN ?", channelIDs).Update("status", common.ChannelStatusEnabled).Error)
+				})
+				require.NoError(t, model.DB.Model(&model.Channel{}).Where("id IN ?", channelIDs).Update("status", common.ChannelStatusManuallyDisabled).Error)
+				response := f.request("GET", "/pg/video/models", f.access, "", nil)
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				assert.Contains(t, response.Body.String(), `"models":[]`)
+			})
+			t.Run("catalog visibility follows metadata rules for public aliases", func(t *testing.T) {
+				var channel model.Channel
+				require.NoError(t, model.DB.Where("name = ?", "doubao").First(&channel).Error)
+				for _, test := range []struct {
+					name     string
+					metadata []model.Model
+					visible  bool
+				}{
+					{name: "video-open", visible: true},
+					{name: "video-exact-hidden", metadata: []model.Model{{ModelName: "video-exact-hidden"}}},
+					{name: "video-prefix-hidden", metadata: []model.Model{{ModelName: "video-prefix-", NameRule: model.NameRulePrefix}}},
+					{name: "video-suffix-hidden", metadata: []model.Model{{ModelName: "-hidden", NameRule: model.NameRuleSuffix}}},
+					{name: "video-contains-hidden", metadata: []model.Model{{ModelName: "contains", NameRule: model.NameRuleContains}}},
+					{name: "video-prefix-override", metadata: []model.Model{{ModelName: "video-prefix-", NameRule: model.NameRulePrefix}, {ModelName: "video-prefix-override", Status: 1}}, visible: true},
+					{name: "video-precedence-ending", metadata: []model.Model{{ModelName: "-ending", NameRule: model.NameRuleSuffix}, {ModelName: "video-", NameRule: model.NameRulePrefix, Status: 1}}, visible: true},
+					{name: "video-contains-ending", metadata: []model.Model{{ModelName: "contains", NameRule: model.NameRuleContains}, {ModelName: "-ending", NameRule: model.NameRuleSuffix, Status: 1}}, visible: true},
+					{name: "video-public-alias", metadata: []model.Model{{ModelName: channel.Models}}, visible: true},
+				} {
+					t.Run(test.name, func(t *testing.T) {
+						changed := channel
+						changed.Models = test.name
+						mapping, err := common.Marshal(map[string]string{test.name: channel.Models})
+						require.NoError(t, err)
+						changed.ModelMapping = common.GetPointer(string(mapping))
+						t.Cleanup(func() {
+							restore := channel
+							require.NoError(t, restore.Update())
+						})
+						require.NoError(t, changed.Update())
+						for _, metadata := range test.metadata {
+							status := metadata.Status
+							require.NoError(t, model.DB.Create(&metadata).Error)
+							t.Cleanup(func() { require.NoError(t, model.DB.Unscoped().Delete(&metadata).Error) })
+							// GORM's create default would otherwise replace an explicit zero.
+							require.NoError(t, model.DB.Model(&metadata).Update("status", status).Error)
+						}
+						response := f.request("GET", "/pg/video/models?group=default", f.access, "", nil)
+						require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+						if test.visible {
+							assert.Contains(t, response.Body.String(), `"model":"`+test.name+`"`)
+						} else {
+							require.NotContains(t, response.Body.String(), `"model":"`+test.name+`"`)
+							var before model.User
+							require.NoError(t, model.DB.First(&before, 701).Error)
+							response = f.request("POST", "/pg/video/tasks", f.access, "hidden_catalog_"+test.name, videoPlaygroundBody(t, "doubao", test.name, false))
+							assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+							var after model.User
+							require.NoError(t, model.DB.First(&after, 701).Error)
+							assert.Equal(t, before.Quota, after.Quota)
+							f.mu.Lock()
+							assert.Empty(t, f.requests)
+							f.mu.Unlock()
+						}
+					})
+				}
+			})
 			t.Run("upstream rejection and ambiguous failures never resubmit", func(t *testing.T) {
 				for _, test := range []struct {
 					name   string
@@ -433,6 +554,28 @@ func TestVideoPlaygroundProviderContracts(t *testing.T) {
 							wantImages = 1
 						}
 						assert.Equal(t, wantImages, images)
+						if test.key == "doubao" && !reference {
+							metadata := model.Model{ModelName: test.name, Status: 1}
+							require.NoError(t, model.DB.Create(&metadata).Error)
+							t.Cleanup(func() { require.NoError(t, model.DB.Unscoped().Delete(&metadata).Error) })
+							require.NoError(t, model.DB.Model(&metadata).Update("status", 0).Error)
+							catalog := f.request("GET", "/pg/video/models", f.access, "", nil)
+							require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+							assert.NotContains(t, catalog.Body.String(), `"model":"`+test.name+`"`)
+							f.mu.Lock()
+							beforeRequests := len(f.requests[test.key])
+							f.mu.Unlock()
+							var beforeHidden model.User
+							require.NoError(t, model.DB.First(&beforeHidden, 701).Error)
+							rejected := f.request("POST", "/pg/video/tasks", f.access, "new_hidden_model_intent_0000", payload)
+							assert.Equal(t, http.StatusBadRequest, rejected.Code, rejected.Body.String())
+							var afterHidden model.User
+							require.NoError(t, model.DB.First(&afterHidden, 701).Error)
+							assert.Equal(t, beforeHidden.Quota, afterHidden.Quota)
+							f.mu.Lock()
+							assert.Len(t, f.requests[test.key], beforeRequests)
+							f.mu.Unlock()
+						}
 						replay := f.request("POST", "/pg/video/tasks", f.access, key, payload)
 						require.Equal(t, 200, replay.Code, replay.Body.String())
 						assert.Contains(t, replay.Body.String(), task.TaskID)
@@ -685,10 +828,12 @@ func TestVideoPlaygroundCapabilitiesVersionContract(t *testing.T) {
 		name, plugin, version, model string
 		supported                    bool
 	}{
-		{"moma current version", "moma-seedance", "1.1.0", "doubao-seedance-2-0-260128", true},
-		{"moma upstream model alias", "moma-seedance", "1.1.0", "doubao-seedance-2.0", true},
+		{"moma current version", "moma-seedance", "1.3.0", "doubao-seedance-2-0-260128", true},
+		{"moma upstream model alias", "moma-seedance", "1.3.0", "doubao-seedance-2.0", true},
+		{"moma verified legacy version", "moma-seedance", "1.1.0", "doubao-seedance-2-0-260128", true},
 		{"moma previous version", "moma-seedance", "1.0.0", "doubao-seedance-2-0-260128", false},
 		{"moma unknown version", "moma-seedance", "1.1.1", "doubao-seedance-2-0-260128", false},
+		{"moma unknown current patch", "moma-seedance", "1.3.1", "doubao-seedance-2-0-260128", false},
 		{"doubao verified version", "doubao", "1.2.1", "doubao-seedance-2-0-260128", true},
 		{"doubao unsupported version", "doubao", "1.1.0", "doubao-seedance-2-0-260128", false},
 		{"ctyun verified version", "ctyun-cdance", "1.0.0", "cdance2.0-0807", true},
@@ -737,7 +882,7 @@ func TestVideoPlaygroundChannelIdentityAndAliases(t *testing.T) {
 					}
 				}
 				require.NotNil(t, option, "MoMa model must appear in the video playground catalog")
-				assert.Equal(t, "1.1.0", option.PluginVersion)
+				assert.Equal(t, "1.3.0", option.PluginVersion)
 				assert.True(t, option.Available, option.DisabledReason)
 			}
 			response := f.request("POST", "/pg/video/tasks", f.access, "channel_identity_intent_0000", videoPlaygroundBody(t, test.plugin, test.model, false))
@@ -872,9 +1017,7 @@ func TestVideoPlaygroundChannelIdentityAndAliases(t *testing.T) {
 					break
 				}
 			}
-			require.NotNil(t, option)
-			assert.False(t, option.Available)
-			assert.Equal(t, "ambiguous_model_mapping", option.DisabledReason)
+			assert.Nil(t, option, "unavailable mappings must be omitted from the menu")
 			var before model.User
 			require.NoError(t, model.DB.First(&before, 701).Error)
 			response := f.request("POST", "/pg/video/tasks", f.access, "ambiguous_mapping_intent_0000", videoPlaygroundBody(t, "doubao", "doubao-seedance-2-0-260128", false))

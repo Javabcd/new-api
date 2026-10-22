@@ -99,6 +99,25 @@ func resolveModelMetadata(records []Model, names []string) map[string]*Model {
 	return resolved
 }
 
+// GetModelCatalogVisibility applies catalog metadata to public model names.
+// Configured models without matching metadata remain visible.
+func GetModelCatalogVisibility(names []string) (map[string]bool, error) {
+	visible := make(map[string]bool, len(names))
+	if len(names) == 0 {
+		return visible, nil
+	}
+	var records []Model
+	if err := DB.Find(&records).Error; err != nil {
+		return nil, err
+	}
+	metadata := resolveModelMetadata(records, names)
+	for _, name := range names {
+		entry := metadata[name]
+		visible[name] = entry == nil || entry.Status == 1
+	}
+	return visible, nil
+}
+
 // FillModelSquareStates applies the same metadata policy as the public catalog
 // to live routes, then aggregates concrete models for metadata rule rows.
 func FillModelSquareStates(rows []*Model, configured map[string][]int, connections []ModelConnection) error {

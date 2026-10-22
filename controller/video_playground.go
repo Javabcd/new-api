@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -27,6 +28,9 @@ func VideoPlaygroundModels(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Video models are unavailable"})
 		return
 	}
+	options = slices.DeleteFunc(options, func(option dto.VideoPlaygroundModel) bool {
+		return !option.Available
+	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"group": group, "models": options}})
 }
 

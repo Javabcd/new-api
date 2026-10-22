@@ -85,6 +85,9 @@ function VideoPlaygroundContent(props: {
   const models = useQuery({
     queryKey: [...baseKey, 'models', group],
     queryFn: () => getVideoModels(group),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
   const tasks = useQuery({
     queryKey: [...baseKey, 'tasks', page],
@@ -142,13 +145,14 @@ function VideoPlaygroundContent(props: {
     }
   }, [client, props.identity, unresolved.data, unresolved.isSuccess])
 
-  const options = models.data || []
+  const options = (models.data || []).filter((model) => model.available)
   const selected = options.find(
     (model) => `${model.plugin_key}::${model.model}` === selection
   )
   const serverOutstanding = unresolved.data?.find(
     (item) => !acknowledged.includes(item.task_id)
   )
+  const catalogBlocked = models.isPending || models.isError
   const recoveryBlocked = unresolved.isPending || unresolved.isError
   const outstanding =
     Boolean(serverOutstanding) ||
@@ -182,7 +186,7 @@ function VideoPlaygroundContent(props: {
           </CardHeader>
           <CardContent className='space-y-4'>
             <ModelGroupSelector
-              selectedModel={selection}
+              selectedModel={selected ? selection : ''}
               models={options.map((model) => ({
                 label: model.display_name,
                 value: `${model.plugin_key}::${model.model}`,
@@ -268,7 +272,7 @@ function VideoPlaygroundContent(props: {
                 model={selected}
                 group={group}
                 identity={props.identity}
-                blocked={outstanding || recoveryBlocked}
+                blocked={outstanding || recoveryBlocked || catalogBlocked}
                 onBusy={setBusy}
                 onIntent={(key) => {
                   setIntent(key)

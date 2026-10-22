@@ -298,6 +298,7 @@ export function VideoForm(props: {
           'This generation will use your balance or subscription quota. Continue?'
         )}
         confirmText={t('Generate video')}
+        disabled={disabled}
         isLoading={mutation.isPending}
         handleConfirm={() => {
           if (!confirmation || sending.current || props.blocked) return
