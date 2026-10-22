@@ -108,7 +108,7 @@ func TestMomaSeedanceSubmission(t *testing.T) {
 				assert.Equal(t, momaModel, info.OriginModelName)
 				facts, err := adaptor.ExtractUsageFactsValidated(c, info)
 				require.NoError(t, err)
-				assert.Equal(t, map[string]any{"tokens": float64(534600)}, facts)
+				assert.Equal(t, map[string]any{"tokens": float64(534600), "resolution": "1080p"}, facts)
 				_, err = adaptor.EstimateBillingValidated(c, info)
 				require.Error(t, err, "legacy per-call pricing must be rejected")
 			})
@@ -123,7 +123,7 @@ func TestMomaSeedanceOmissionAndMapping(t *testing.T) {
 		ctx["upstreamModel"] = mapped
 		value, err := plugin.Engine.Call(t.Context(), "extractUsage", ctx)
 		require.NoError(t, err)
-		assert.Equal(t, map[string]any{"tokens": float64(108000)}, alibabaObject(t, value))
+		assert.Equal(t, map[string]any{"tokens": float64(108000), "resolution": "720p"}, alibabaObject(t, value))
 		value, err = plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
 		require.NoError(t, err)
 		body := alibabaObject(t, value)["body"].(map[string]any)
@@ -346,16 +346,18 @@ func TestMomaSeedanceMediaReferences(t *testing.T) {
 func TestMomaSeedanceReservation(t *testing.T) {
 	plugin := newMomaPlugin(t)
 	for _, tc := range []struct {
-		request map[string]any
-		tokens  float64
+		request    map[string]any
+		tokens     float64
+		resolution string
 	}{
-		{map[string]any{}, 108000},
-		{map[string]any{"duration": -1}, 324000},
-		{map[string]any{"seconds": "-1"}, 324000},
-		{map[string]any{"resolution": "480p"}, 48038},
-		{map[string]any{"resolution": "720p", "duration": 4}, 86400},
-		{map[string]any{"resolution": "1080p", "duration": 15}, 729000},
-		{map[string]any{"metadata": map[string]any{"resolution": "1080p", "duration": -1}}, 729000},
+		{map[string]any{}, 108000, "720p"},
+		{map[string]any{"duration": -1}, 324000, "720p"},
+		{map[string]any{"seconds": "-1"}, 324000, "720p"},
+		{map[string]any{"resolution": "480p"}, 48038, "480p"},
+		{map[string]any{"resolution": "720p", "duration": 4}, 86400, "720p"},
+		{map[string]any{"resolution": "1080p", "duration": 15}, 729000, "1080p"},
+		{map[string]any{"metadata": map[string]any{"resolution": "1080p", "duration": -1}}, 729000, "1080p"},
+		{map[string]any{"resolution": "480p", "metadata": map[string]any{"resolution": "1080p"}}, 48038, "480p"},
 	} {
 		tc.request["prompt"] = "hello"
 		info := &relaycommon.RelayInfo{OriginModelName: momaModel, TaskRelayInfo: &relaycommon.TaskRelayInfo{}, ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: momaModel, ChannelBaseUrl: plugin.Meta.BaseURL, ApiKey: "test-secret"}}
@@ -367,7 +369,7 @@ func TestMomaSeedanceReservation(t *testing.T) {
 		require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info), "%v", tc.request)
 		facts, err := adaptor.ExtractUsageFactsValidated(c, info)
 		require.NoError(t, err)
-		assert.Equal(t, map[string]any{"tokens": tc.tokens}, facts)
+		assert.Equal(t, map[string]any{"tokens": tc.tokens, "resolution": tc.resolution}, facts)
 	}
 	for _, invalid := range []map[string]any{
 		{"duration": -2}, {"duration": 3601}, {"seconds": -2}, {"count": -1},
@@ -417,7 +419,7 @@ func TestMomaSeedanceCompletionAndBilling(t *testing.T) {
 			continue
 		}
 		assert.Equal(t, "https://example.com/video.mp4", result.Url)
-		assert.Equal(t, map[string]any{"tokens": float64(410000)}, result.UsageFacts)
+		assert.Equal(t, map[string]any{"tokens": float64(410000), "resolution": "720p"}, result.UsageFacts)
 		// Synthetic pricing verifies the frozen estimate is replaced in both
 		// directions; it makes no claim about MoMa's published monetary price.
 		const expression = `tier("tokens", u("tokens") * 2 / 1000000)`
@@ -438,6 +440,69 @@ func TestMomaSeedanceCompletionAndBilling(t *testing.T) {
 		value, err := plugin.Engine.Call(t.Context(), "extractUsageOnComplete", map[string]any{}, map[string]any{}, map[string]any{"status": "succeeded", "usage": map[string]any{"total_tokens": tc.total, "completion_tokens": tc.completion}})
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, alibabaObject(t, value)["tokens"])
+	}
+}
+
+func TestMomaSeedanceResolutionPricing(t *testing.T) {
+	plugin := newMomaPlugin(t)
+	// Synthetic prices are USD per million tokens, not published MoMa prices.
+	const expression = `u("resolution") == "480p" ? tier("480p", u("tokens") * 1 / 1000000) : u("resolution") == "720p" ? tier("720p", u("tokens") * 2 / 1000000) : tier("1080p", u("tokens") * 4 / 1000000)`
+	for _, modelName := range plugin.Meta.Models {
+		schema, _ := plugin.Meta.UsageForModel(modelName)
+		require.NoError(t, billing_setting.SmokeTestTaskExpr(expression, schema), modelName)
+		assert.Equal(t, []string{"480p", "720p", "1080p"}, schema["resolution"].Enum)
+	}
+	adaptor := taskplugin.New(plugin)
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: plugin.Meta.BaseURL, ApiKey: "test-secret"}})
+	task := &model.Task{TaskID: "task_public", Properties: model.Properties{OriginModelName: momaModel, UpstreamModelName: "doubao-seedance-2.0"}}
+	for _, tc := range []struct {
+		name              string
+		requestResolution string
+		outputResolution  any
+		tokens            any
+		wantResolution    string
+		wantTokens        float64
+		wantQuota         int
+	}{
+		{"480p output lowers tier", "720p", "480p", 200000, "480p", 200000, 100000},
+		{"720p output keeps tier", "720p", "720p", 200000, "720p", 200000, 200000},
+		{"1080p output raises tier", "480p", "1080p", 200000, "1080p", 200000, 400000},
+		{"output resolution is normalized", "720p", " 1080P ", 200000, "1080p", 200000, 400000},
+		{"missing resolution keeps submission", "1080p", nil, 200000, "1080p", 200000, 400000},
+		{"unsupported resolution keeps default", "", "4k", 200000, "720p", 200000, 200000},
+		{"non-string resolution keeps submission", "480p", 1080, 200000, "480p", 200000, 100000},
+		{"missing tokens keep estimate with actual resolution", "720p", "1080p", nil, "1080p", 108000, 216000},
+		{"missing facts keep reservation", "", nil, nil, "720p", 108000, 108000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := map[string]any{"prompt": "hello"}
+			if tc.requestResolution != "" {
+				request["resolution"] = tc.requestResolution
+			}
+			value, err := plugin.Engine.Call(t.Context(), "extractUsage", momaContext(request))
+			require.NoError(t, err)
+			frozenFacts := alibabaObject(t, value)
+			snapshot := &billingexpr.BillingSnapshot{
+				BillingMode: billing_setting.BillingModeTieredExpr, ModelName: momaModel,
+				ExprString: expression, ExprHash: billingexpr.ExprHashString(expression), ExprVersion: billingexpr.ExprVersion(expression),
+				GroupRatio: 1, QuotaPerUnit: 500000, TaskUsageBilling: true, UsageFacts: maps.Clone(frozenFacts),
+			}
+			body := map[string]any{"status": "succeeded", "usage": map[string]any{"total_tokens": tc.tokens}}
+			if tc.outputResolution != nil {
+				body["resolution"] = tc.outputResolution
+			}
+			encoded, err := common.Marshal(body)
+			require.NoError(t, err)
+			result, err := adaptor.ParseTaskResult(task, &http.Response{StatusCode: 200}, encoded)
+			require.NoError(t, err)
+			require.Equal(t, "SUCCESS", result.Status)
+			settled, facts, err := service.EvaluateTaskCompletionUsage(snapshot, result.UsageFacts)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantQuota, settled.ActualQuotaAfterGroup)
+			assert.Equal(t, tc.wantResolution, settled.MatchedTier)
+			assert.Equal(t, map[string]any{"tokens": tc.wantTokens, "resolution": tc.wantResolution}, facts)
+			assert.Equal(t, frozenFacts, snapshot.UsageFacts, "completion must not mutate the frozen submission facts")
+		})
 	}
 }
 

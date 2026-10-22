@@ -1,6 +1,7 @@
 // Task hooks follow QuantumNous/new-api's Doubao plugin contract.
 const MODEL = "doubao-seedance-2-0-260128";
 const UPSTREAM_MODEL = "doubao-seedance-2.0";
+const RESOLUTIONS = ["480p", "720p", "1080p"];
 const MAX_TOKENS = 2147483647;
 const REQUEST_DEFAULTS = {
   return_last_frame: false,
@@ -17,7 +18,7 @@ export const meta = {
   key: "moma-seedance",
   name: "China Mobile MoMa Seedance",
   icon: "text:Mo",
-  version: "1.1.0",
+  version: "1.2.0",
   author: { name: "QuantumNous" },
   description: {
     en: "MoMa Seedance task parameters via direct HTTP; SDK video encryption is not supported; result URLs expire after 24 hours",
@@ -31,8 +32,13 @@ export const meta = {
   upstreams: ["vendor", "new_api"],
   usageSchema: {
     tokens: { type: "number", unit: "token", description: { en: "Video generation token unit price", zh: "视频生成 Token 单价" } },
+    resolution: { enum: RESOLUTIONS, description: { en: "Output video resolution", zh: "输出视频分辨率" } },
   },
-  usageExamples: [{ label: "MoMa · 11s", facts: { tokens: 411300 } }],
+  usageExamples: [
+    { label: "480p · 5s", facts: { tokens: 48038, resolution: "480p" } },
+    { label: "720p · 5s", facts: { tokens: 108000, resolution: "720p" } },
+    { label: "1080p · 5s", facts: { tokens: 243000, resolution: "1080p" } },
+  ],
   routes: [
     { method: "POST", path: "/moma/api/v3/contents/generations/tasks", type: "submit", decode: "createTask", render: "taskCreated" },
     { method: "GET", path: "/moma/api/v3/contents/generations/tasks/:task_id", type: "query", render: "taskStatus" },
@@ -128,7 +134,7 @@ function normalizeMomaRequest(ctx, validateModel) {
     duration = seconds;
   }
   if (duration !== undefined) body.duration = duration;
-  if (body.resolution !== undefined && !["480p", "720p", "1080p"].includes(body.resolution)) throw new Error("resolution must be 480p, 720p or 1080p");
+  if (body.resolution !== undefined && !RESOLUTIONS.includes(body.resolution)) throw new Error("resolution must be 480p, 720p or 1080p");
   if (body.ratio !== undefined && !["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"].includes(body.ratio)) throw new Error("invalid MoMa ratio");
   for (const key of ["return_last_frame", "generate_audio", "watermark"]) {
     if (body[key] !== undefined && typeof body[key] !== "boolean") throw new Error(key + " must be a boolean");
@@ -279,7 +285,7 @@ export function extractUsage(ctx) {
   // resolution. It is not MoMa's billing formula: measured usage replaces it.
   // Missing duration uses the documented 5s; automatic duration reserves 15s.
   const dimensions = { "480p": [854, 480], "720p": [1280, 720], "1080p": [1920, 1080] }[body.resolution];
-  return { tokens: Math.ceil(((body.duration === -1 ? 15 : body.duration) * dimensions[0] * dimensions[1] * 24) / 1024) };
+  return { tokens: Math.ceil(((body.duration === -1 ? 15 : body.duration) * dimensions[0] * dimensions[1] * 24) / 1024), resolution: body.resolution };
 }
 
 export function buildQueryRequest(ctx) {
@@ -306,13 +312,19 @@ export function parseTaskResult(ctx, body) {
 
 export function extractUsageOnComplete(ctx, result, body) {
   if (!body || body.status !== "succeeded") return {};
+  const facts = {};
   const usage = body.usage || {};
   for (const value of [usage.total_tokens, usage.completion_tokens]) {
-    if (Number.isInteger(value) && value > 0 && value <= MAX_TOKENS) return { tokens: value };
+    if (Number.isInteger(value) && value > 0 && value <= MAX_TOKENS) {
+      facts.tokens = value;
+      break;
+    }
   }
-  // Missing/invalid measured usage keeps the host's frozen reservation, rather
-  // than pretending an estimated quantity was reported by MoMa.
-  return {};
+  const resolution = trimmed(body.resolution).toLowerCase();
+  if (RESOLUTIONS.includes(resolution)) facts.resolution = resolution;
+  // Omitted facts retain their frozen submission values; never invent measured
+  // tokens or an output resolution when MoMa omits or returns invalid values.
+  return facts;
 }
 
 export function listArtifacts(task) {
