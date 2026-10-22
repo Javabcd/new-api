@@ -22,6 +22,8 @@ import i18next from 'i18next'
 import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import type { BillingUsageSchema } from '@/features/pricing/types'
+
 import { TaskUsagePricingEditor } from '../task-usage-pricing-editor'
 
 function renderPricing(unitLabel?: Record<string, string>) {
@@ -351,3 +353,75 @@ it.each(['image', 'video'] as const)(
     }
   }
 )
+
+it('edits and reloads all six MoMa pricing combinations while preserving existing resolution prices', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn<(next: string) => void>()
+  const usageSchema: BillingUsageSchema = {
+    tokens: {
+      type: 'number',
+      unit: 'token',
+      description: { en: 'Video generation token unit price' },
+    },
+    resolution: {
+      enum: ['480p', '720p', '1080p'],
+      description: { en: 'Output video resolution' },
+    },
+    video_input: {
+      enum: ['none', 'video'],
+      description: { en: 'Reference video input' },
+      enumLabels: {
+        none: { en: 'No reference video' },
+        video: { en: 'With reference video' },
+      },
+    },
+  }
+  const props = {
+    billingExpr:
+      'u("resolution") == "1080p" ? tier("1080p", u("tokens") * 8 / 1000000) : tier("480p_720p", u("tokens") * 6 / 1000000)',
+    requestRuleExpr: '',
+    usageSchema,
+    onBillingExprChange: onChange,
+    onRequestRuleExprChange: vi.fn(),
+  }
+  const view = render(<TaskUsagePricingEditor {...props} />)
+  // Synthetic USD prices verify the editor contract, not provider quotations.
+  const prices = [
+    ['480p', 'No reference video', '6', '6'],
+    ['480p', 'With reference video', '6', '2'],
+    ['720p', 'No reference video', '6', '6'],
+    ['720p', 'With reference video', '6', '2'],
+    ['1080p', 'No reference video', '8', '8'],
+    ['1080p', 'With reference video', '8', '4'],
+  ] as const
+  for (const [resolution, videoInput, originalPrice] of prices) {
+    expect(
+      screen.getByRole('textbox', {
+        name: `Video generation token unit price: Output video resolution: ${resolution} · ${videoInput}`,
+      })
+    ).toHaveValue(originalPrice)
+  }
+  expect(onChange).not.toHaveBeenCalled()
+
+  for (const [resolution, videoInput, originalPrice, nextPrice] of prices) {
+    if (originalPrice === nextPrice) continue
+    const input = screen.getByRole('textbox', {
+      name: `Video generation token unit price: Output video resolution: ${resolution} · ${videoInput}`,
+    })
+    await user.clear(input)
+    await user.type(input, nextPrice)
+  }
+  const savedExpression = onChange.mock.lastCall?.[0] ?? ''
+  expect(savedExpression).toContain('u("video_input")')
+  view.unmount()
+  onChange.mockClear()
+  render(<TaskUsagePricingEditor {...props} billingExpr={savedExpression} />)
+  for (const [resolution, videoInput, , nextPrice] of prices) {
+    expect(
+      screen.getByRole('textbox', {
+        name: `Video generation token unit price: Output video resolution: ${resolution} · ${videoInput}`,
+      })
+    ).toHaveValue(nextPrice)
+  }
+  expect(onChange).not.toHaveBeenCalled()
+})

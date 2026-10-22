@@ -18,7 +18,7 @@ export const meta = {
   key: "moma-seedance",
   name: "China Mobile MoMa Seedance",
   icon: "text:Mo",
-  version: "1.2.0",
+  version: "1.3.0",
   author: { name: "QuantumNous" },
   description: {
     en: "MoMa Seedance task parameters via direct HTTP; SDK video encryption is not supported; result URLs expire after 24 hours",
@@ -33,11 +33,19 @@ export const meta = {
   usageSchema: {
     tokens: { type: "number", unit: "token", description: { en: "Video generation token unit price", zh: "视频生成 Token 单价" } },
     resolution: { enum: RESOLUTIONS, description: { en: "Output video resolution", zh: "输出视频分辨率" } },
+    video_input: {
+      enum: ["none", "video"],
+      description: { en: "Reference video input", zh: "参考视频输入" },
+      enumLabels: { none: { en: "No reference video", zh: "无参考视频" }, video: { en: "With reference video", zh: "包含参考视频" } },
+    },
   },
   usageExamples: [
-    { label: "480p · 5s", facts: { tokens: 48038, resolution: "480p" } },
-    { label: "720p · 5s", facts: { tokens: 108000, resolution: "720p" } },
-    { label: "1080p · 5s", facts: { tokens: 243000, resolution: "1080p" } },
+    { label: "480p · 5s", facts: { tokens: 48038, resolution: "480p", video_input: "none" } },
+    { label: "720p · 5s", facts: { tokens: 108000, resolution: "720p", video_input: "none" } },
+    { label: "1080p · 5s", facts: { tokens: 243000, resolution: "1080p", video_input: "none" } },
+    { label: "480p · 5s · video", facts: { tokens: 48038, resolution: "480p", video_input: "video" } },
+    { label: "720p · 5s · video", facts: { tokens: 108000, resolution: "720p", video_input: "video" } },
+    { label: "1080p · 5s · video", facts: { tokens: 243000, resolution: "1080p", video_input: "video" } },
   ],
   routes: [
     { method: "POST", path: "/moma/api/v3/contents/generations/tasks", type: "submit", decode: "createTask", render: "taskCreated" },
@@ -285,7 +293,11 @@ export function extractUsage(ctx) {
   // resolution. It is not MoMa's billing formula: measured usage replaces it.
   // Missing duration uses the documented 5s; automatic duration reserves 15s.
   const dimensions = { "480p": [854, 480], "720p": [1280, 720], "1080p": [1920, 1080] }[body.resolution];
-  return { tokens: Math.ceil(((body.duration === -1 ? 15 : body.duration) * dimensions[0] * dimensions[1] * 24) / 1024), resolution: body.resolution };
+  return {
+    tokens: Math.ceil(((body.duration === -1 ? 15 : body.duration) * dimensions[0] * dimensions[1] * 24) / 1024),
+    resolution: body.resolution,
+    video_input: body.content.some((item) => item.type === "video_url") ? "video" : "none",
+  };
 }
 
 export function buildQueryRequest(ctx) {
@@ -322,6 +334,7 @@ export function extractUsageOnComplete(ctx, result, body) {
   }
   const resolution = trimmed(body.resolution).toLowerCase();
   if (RESOLUTIONS.includes(resolution)) facts.resolution = resolution;
+  // Omit video_input: it describes the frozen request, not the generated video.
   // Omitted facts retain their frozen submission values; never invent measured
   // tokens or an output resolution when MoMa omits or returns invalid values.
   return facts;
