@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import i18next from 'i18next'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PricingSidebar } from '../components/pricing-sidebar'
 import {
@@ -26,6 +27,21 @@ import {
   type PricingToolbarProps,
 } from '../components/pricing-toolbar'
 import type { PricingModel } from '../types'
+
+afterEach(async () => {
+  await i18next.changeLanguage('en')
+  for (const language of [
+    'zhCN',
+    'zhTW',
+    'fr',
+    'ja',
+    'ru',
+    'vi',
+    'invalid-locale',
+  ]) {
+    i18next.removeResourceBundle(language, 'translation')
+  }
+})
 
 function toolbarProps(): PricingToolbarProps {
   return {
@@ -61,6 +77,88 @@ function toolbarProps(): PricingToolbarProps {
 }
 
 describe('pricing controls', () => {
+  it('keeps vendor and capability selection in the horizontal catalog filters', async () => {
+    const props = toolbarProps()
+    const user = userEvent.setup()
+    const onCapabilityChange = vi.fn()
+    const model: PricingModel = {
+      id: 1,
+      model_name: 'text-model',
+      vendor_name: 'Vendor A',
+      quota_type: 0,
+      model_ratio: 1,
+      completion_ratio: 1,
+      enable_groups: ['default'],
+      supported_endpoint_types: ['openai'],
+    }
+    render(
+      <PricingSidebar
+        {...props}
+        presentation='catalog'
+        onCapabilityChange={onCapabilityChange}
+        models={[model]}
+        vendors={[{ id: 1, name: 'Vendor A' }]}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /^Groups$/ })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Vendor A/ }))
+    expect(props.onVendorChange).toHaveBeenCalledWith('Vendor A')
+    await user.click(screen.getByRole('button', { name: /^Chat/ }))
+    expect(onCapabilityChange).toHaveBeenCalledWith('text')
+  })
+
+  it('keeps catalog price controls in display settings and restores focus on Escape', async () => {
+    const props = toolbarProps()
+    const user = userEvent.setup()
+    render(<PricingToolbar {...props} presentation='catalog' />)
+    expect(
+      screen.queryByRole('button', { name: '/1K' })
+    ).not.toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: 'Display settings' })
+    await user.click(trigger)
+    const settings = await screen.findByRole('dialog', {
+      name: 'Display settings',
+    })
+    await user.click(within(settings).getByRole('button', { name: '/1K' }))
+    expect(props.onTokenUnitChange).toHaveBeenCalledWith('K')
+    await user.click(within(settings).getByRole('button', { name: 'Recharge' }))
+    expect(props.onRechargePriceChange).toHaveBeenCalledWith(true)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('updates count formatting when switching between all interface languages and an invalid locale', async () => {
+    render(
+      <PricingToolbar
+        {...toolbarProps()}
+        filteredCount={12345}
+        totalCount={23456}
+      />
+    )
+    const cases = [
+      ['en', '12,345'],
+      ['zhCN', '12,345'],
+      ['zhTW', '12,345'],
+      ['fr', '12\u202f345'],
+      ['ja', '12,345'],
+      ['ru', '12\u00a0345'],
+      ['vi', '12.345'],
+      ['invalid-locale', '12,345'],
+    ]
+    for (const [language, expected] of cases) {
+      if (language !== 'en') {
+        i18next.addResourceBundle(language, 'translation', { Filter: 'Filter' })
+      }
+      await act(async () => {
+        await i18next.changeLanguage(language)
+      })
+      expect(
+        screen.getByText(expected, { normalizer: (text) => text })
+      ).toBeVisible()
+    }
+  })
   it('counts each model once per filter and updates counts when the catalog changes', () => {
     const props = toolbarProps()
     const base: PricingModel = {
@@ -197,30 +295,44 @@ describe('pricing controls', () => {
     expect(props.onSortChange).toHaveBeenCalledWith('price-low')
   })
 
-  it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    const { rerender } = render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: 'Filter' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Filter' })
-    expect(dialog).toHaveAttribute('data-side', 'left')
-    expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled()
-    await user.click(within(dialog).getByRole('button', { name: /premium/ }))
-    expect(props.onGroupChange).toHaveBeenCalledWith('premium')
-    rerender(
-      <PricingToolbar
-        {...props}
-        groupFilter='premium'
-        hasActiveFilters
-        activeFilterCount={1}
-      />
-    )
-    expect(
-      within(dialog).getByRole('button', { name: /premium/ })
-    ).toHaveAttribute('aria-pressed', 'true')
-    await user.click(within(dialog).getByRole('button', { name: 'Reset' }))
-    expect(props.onClearFilters).toHaveBeenCalledOnce()
-    await user.keyboard('{Escape}')
-    expect(await screen.findByRole('button', { name: /Filter/ })).toHaveFocus()
-  })
+  it.each(['sidebar', 'catalog'] as const)(
+    'opens %s filters from the left, selects a group, and restores focus on close',
+    async (presentation) => {
+      const props = toolbarProps()
+      const user = userEvent.setup()
+      const triggerLabel =
+        presentation === 'catalog' ? 'Advanced filters' : 'Filter'
+      const { rerender } = render(
+        <PricingToolbar {...props} presentation={presentation} />
+      )
+      await user.click(screen.getByRole('button', { name: triggerLabel }))
+      const dialog = await screen.findByRole('dialog', { name: 'Filter' })
+      expect(dialog).toHaveAttribute('data-side', 'left')
+      expect(
+        within(dialog).getByRole('button', { name: 'Reset' })
+      ).toBeDisabled()
+      await user.click(within(dialog).getByRole('button', { name: /premium/ }))
+      expect(props.onGroupChange).toHaveBeenCalledWith('premium')
+      rerender(
+        <PricingToolbar
+          {...props}
+          presentation={presentation}
+          groupFilter='premium'
+          hasActiveFilters
+          activeFilterCount={1}
+        />
+      )
+      expect(
+        within(dialog).getByRole('button', { name: /premium/ })
+      ).toHaveAttribute('aria-pressed', 'true')
+      await user.click(within(dialog).getByRole('button', { name: 'Reset' }))
+      expect(props.onClearFilters).toHaveBeenCalledOnce()
+      await user.keyboard('{Escape}')
+      expect(
+        await screen.findByRole('button', {
+          name: new RegExp(`^${triggerLabel}`),
+        })
+      ).toHaveFocus()
+    }
+  )
 })

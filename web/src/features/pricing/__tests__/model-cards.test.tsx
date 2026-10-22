@@ -88,6 +88,79 @@ afterEach(() => {
 })
 
 describe('model cards', () => {
+  it('opens compact model details and copies the name without opening details', async () => {
+    const onClick = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ModelCard
+        presentation='compact'
+        model={pricingModel({
+          vendor_name: 'OpenAI',
+          supported_endpoint_types: ['image-generation'],
+        })}
+        onClick={onClick}
+      />
+    )
+    expect(screen.getByTitle('Image generation')).toBeVisible()
+    expect(
+      screen.queryByRole('group', { name: 'Pricing' })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Copy model name' }))
+    expect(await navigator.clipboard.readText()).toBe('example-model')
+    expect(onClick).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole('button', { name: 'View details for example-model' })
+    )
+    expect(onClick).toHaveBeenCalledWith('example-model')
+  })
+
+  it('appends forty compact models at a time and restarts when the filter changes', async () => {
+    const models = Array.from({ length: 81 }, (_, index) =>
+      pricingModel({ id: index + 1, model_name: `compact-${index + 1}` })
+    )
+    const user = userEvent.setup()
+    const result = render(
+      <QueryClientProvider client={queryClient}>
+        <ModelCardGrid
+          key='all'
+          presentation='compact'
+          models={models}
+          onModelClick={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+    expect(
+      screen.getAllByRole('button', { name: /^View details for/ })
+    ).toHaveLength(40)
+    await user.click(screen.getByRole('button', { name: 'Show more models' }))
+    expect(
+      screen.getAllByRole('button', { name: /^View details for/ })
+    ).toHaveLength(80)
+    await user.click(screen.getByRole('button', { name: 'Show more models' }))
+    expect(
+      screen.getAllByRole('button', { name: /^View details for/ })
+    ).toHaveLength(81)
+    expect(
+      screen.getByRole('button', { name: 'All models shown' })
+    ).toBeDisabled()
+    result.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ModelCardGrid
+          key='filtered'
+          presentation='compact'
+          models={models.slice(1)}
+          onModelClick={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+    expect(
+      screen.getAllByRole('button', { name: /^View details for/ })
+    ).toHaveLength(40)
+    expect(
+      screen.getByRole('button', { name: 'View details for compact-2' })
+    ).toBeVisible()
+  })
+
   it('shows separate generic and image cache prices including a free image cache', () => {
     render(
       <CachedPriceCell

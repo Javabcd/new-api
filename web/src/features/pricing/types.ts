@@ -106,6 +106,15 @@ export type PricingModel = {
 /** Input/output modalities supported by a model. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | 'file'
 
+/** Display categories derived from explicitly declared catalog metadata. */
+export type CatalogCapability =
+  | 'text'
+  | 'multi'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'embed'
+
 /** Functional capabilities a model exposes. */
 export type ModelCapability =
   | 'function_calling'

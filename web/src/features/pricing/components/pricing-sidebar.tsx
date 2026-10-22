@@ -27,6 +27,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -36,10 +38,12 @@ import {
   QUOTA_TYPES,
   getEndpointTypeLabels,
   getQuotaTypeLabels,
+  CATALOG_CAPABILITIES,
+  CATALOG_CAPABILITY_VALUES,
 } from '../constants'
 import { hasTaskUsageSchema } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import type { PricingModel, PricingVendor } from '../types'
+import type { CatalogCapability, PricingModel, PricingVendor } from '../types'
 
 type FilterOption = {
   value: string
@@ -57,6 +61,7 @@ type FilterSectionProps = {
 }
 
 export interface PricingSidebarProps {
+  presentation?: 'sidebar' | 'catalog'
   quotaTypeFilter: string
   endpointTypeFilter: string
   vendorFilter: string
@@ -75,6 +80,9 @@ export interface PricingSidebarProps {
   hasActiveFilters: boolean
   onClearFilters: () => void
   className?: string
+  search?: ReactNode
+  capabilityFilter?: CatalogCapability | 'all'
+  onCapabilityChange?: (value: CatalogCapability | 'all') => void
 }
 
 function formatGroupRatio(ratio: number | undefined): string | undefined {
@@ -89,7 +97,10 @@ function FilterChip(props: {
   option: FilterOption
   active: boolean
   onClick: () => void
+  catalog?: boolean
 }) {
+  const { i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   return (
     <Button
       type='button'
@@ -97,7 +108,10 @@ function FilterChip(props: {
       size='sm'
       onClick={props.onClick}
       aria-pressed={props.active}
-      className='h-auto max-w-full gap-1.5 px-2 py-1 text-xs'
+      className={cn(
+        'h-auto max-w-full gap-1.5 px-2 py-1 text-xs',
+        props.catalog && 'mxy-catalog-chip'
+      )}
       title={props.option.label}
     >
       {props.option.icon && (
@@ -107,13 +121,16 @@ function FilterChip(props: {
       {(props.option.suffix || props.option.count != null) && (
         <span
           className={cn(
-            'rounded-md px-1.5 py-0.5 text-[12px]',
+            'mxy-filter-count rounded-md px-1.5 py-0.5 text-[12px]',
             props.active
               ? 'bg-background text-foreground'
               : 'bg-muted text-muted-foreground'
           )}
         >
-          {props.option.suffix ?? props.option.count}
+          {props.option.suffix ??
+            (props.option.count == null
+              ? undefined
+              : formatNumber(props.option.count, locale))}
         </span>
       )}
     </Button>
@@ -188,7 +205,10 @@ export const PricingSidebar = memo(function PricingSidebar(
   const vendorOptions: FilterOption[] = [
     {
       value: FILTER_ALL,
-      label: t('All Vendors'),
+      label:
+        props.presentation === 'catalog'
+          ? t('All model providers')
+          : t('All Vendors'),
       count: props.models.length,
     },
     ...props.vendors
@@ -263,6 +283,65 @@ export const PricingSidebar = memo(function PricingSidebar(
         count: counts.endpoints.get(value) ?? 0,
       })),
   ]
+
+  if (props.presentation === 'catalog') {
+    return (
+      <aside
+        className={cn('mxy-catalog-tools', props.className)}
+        aria-label={t('Filter')}
+      >
+        <div className='mxy-catalog-tools-row'>
+          {props.search}
+          <div
+            role='group'
+            aria-label={t('Capabilities')}
+            className='mxy-catalog-chips'
+          >
+            <FilterChip
+              catalog
+              option={{ value: FILTER_ALL, label: t('All capabilities') }}
+              active={
+                !props.capabilityFilter || props.capabilityFilter === FILTER_ALL
+              }
+              onClick={() => props.onCapabilityChange?.(FILTER_ALL)}
+            />
+            {CATALOG_CAPABILITY_VALUES.map((value) => (
+              <FilterChip
+                key={value}
+                catalog
+                option={{
+                  value,
+                  label: t(CATALOG_CAPABILITIES[value].labelKey),
+                }}
+                active={props.capabilityFilter === value}
+                onClick={() => props.onCapabilityChange?.(value)}
+              />
+            ))}
+          </div>
+        </div>
+        <div
+          role='group'
+          aria-label={t('All Vendors')}
+          tabIndex={0}
+          className='mxy-catalog-chips mxy-catalog-vendors'
+        >
+          {vendorOptions.map((option) => (
+            <FilterChip
+              key={option.value}
+              catalog
+              option={{
+                ...option,
+                icon: undefined,
+                count: option.value === FILTER_ALL ? undefined : option.count,
+              }}
+              active={props.vendorFilter === option.value}
+              onClick={() => props.onVendorChange(option.value)}
+            />
+          ))}
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside className={cn('bg-card rounded-xl border p-3', props.className)}>

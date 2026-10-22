@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Multimodal capability subtitles.
+  'Chat · Reasoning · Agent',
+  'TTS · Music · SFX',
+  'Embedding · Rerank',
   'Task usage metadata is unavailable. Pricing details cannot be displayed.',
   'This expression cannot be expanded into a price table. View the original expression below.',
   'This operation is only supported for vLLM or SGLang channels',
@@ -904,4 +908,14 @@ export const STATIC_I18N_KEYS = [
   'Unsupported aspect ratio',
   'Enter an HTTP or HTTPS image URL',
   'This model requires a reference image',
+  // Homepage descriptions selected from the modality metadata.
+  'Streaming conversations, deep reasoning, tool calling and structured output provide the foundation for your applications.',
+  'Connect speech synthesis, music and sound effects with your creative workflows through the same gateway.',
+  'Embeddings and reranking for retrieval-augmented applications, sharing the same API key as generation models.',
+  'Maixiaoyun AIMXY brings <strong>leading AI models</strong> into one protocol: reasoning, image and video models, all behind one key. Change one <strong>base_url</strong> to move from conversation to creation, with unified access, billing and observability.',
+  // Catalog categories are selected from model metadata.
+  'Chat and reasoning',
+  'Audio and music',
+  'Embeddings and reranking',
+  'Image generation',
 ] as const

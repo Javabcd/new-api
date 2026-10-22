@@ -21,13 +21,14 @@ import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { DEFAULT_TOKEN_UNIT } from '../constants'
+import { CATALOG_CAPABILITIES, DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import {
   getCardExamplePrice,
@@ -36,7 +37,7 @@ import {
   getDynamicPricingSummary,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
-import { parseTags } from '../lib/filters'
+import { getCatalogCapabilities, parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
@@ -45,6 +46,8 @@ import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 
 export interface ModelCardProps {
+  presentation?: 'default' | 'compact'
+  icon?: ReactNode
   model: PricingModel
   onClick: (modelName: string) => void
   priceRate?: number
@@ -56,6 +59,67 @@ export interface ModelCardProps {
 }
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
+  if (props.presentation === 'compact') return <CompactModelCard {...props} />
+  return <DetailedModelCard {...props} />
+})
+
+function CompactModelCard(props: ModelCardProps) {
+  const { t } = useTranslation()
+  const primary = getCatalogCapabilities(props.model)[0]
+  const capability = primary ? CATALOG_CAPABILITIES[primary] : undefined
+  const label = capability ? t(capability.labelKey) : t('Unlabeled')
+  return (
+    <Card className='mxy-compact-model'>
+      <span className='mxy-compact-icon' aria-hidden='true'>
+        {props.icon ?? (
+          <span className='mxy-vendor-fallback'>
+            {props.model.model_name.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </span>
+      <div className='mxy-compact-info'>
+        <h3 className='mxy-compact-name' title={props.model.model_name}>
+          <Button
+            variant='ghost'
+            className='mxy-compact-trigger'
+            aria-label={t('View details for {{model}}', {
+              model: props.model.model_name,
+            })}
+            onClick={() => props.onClick(props.model.model_name)}
+          >
+            {props.model.model_name}
+          </Button>
+        </h3>
+        <span
+          className='mxy-compact-meta'
+          title={[props.model.vendor_name, label].filter(Boolean).join(' · ')}
+        >
+          {[props.model.vendor_name, label].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      <Badge
+        variant='secondary'
+        className={cn(
+          'mxy-capability-badge',
+          primary && `mxy-capability-${primary}`
+        )}
+        title={label}
+      >
+        {capability ? t(capability.shortLabelKey) : t('Unlabeled')}
+      </Badge>
+      <CopyButton
+        value={props.model.model_name}
+        tooltip={t('Copy model name')}
+        className='mxy-compact-copy'
+        iconClassName='size-3'
+      />
+    </Card>
+  )
+}
+
+const DetailedModelCard = memo(function DetailedModelCard(
+  props: ModelCardProps
+) {
   const { t, i18n } = useTranslation()
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const priceRate = props.priceRate ?? 1
@@ -67,7 +131,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const groups = props.model.enable_groups || []
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
-  const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
+  const modelIcon =
+    props.icon ?? (modelIconKey ? getLobeIcon(modelIconKey, 28) : null)
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
   const isUnconfiguredTaskUsage = isUnconfiguredTaskUsageModel(props.model)
   const billingTime = useBillingTime(props.model.billing_expr)

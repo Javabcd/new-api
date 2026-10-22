@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useSearch } from '@tanstack/react-router'
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback, useEffect, useState } from 'react'
 
 import { useDebounce } from '@/hooks/use-debounce'
 
@@ -31,7 +31,7 @@ import {
   type ViewMode,
 } from '../constants'
 import { filterAndSortModels, extractAllTags } from '../lib/filters'
-import type { PricingModel, TokenUnit } from '../types'
+import type { CatalogCapability, PricingModel, TokenUnit } from '../types'
 
 type FilterState = {
   search?: string
@@ -41,6 +41,7 @@ type FilterState = {
   quotaType?: string
   endpointType?: string
   tag?: string
+  capability?: CatalogCapability
   tokenUnit?: TokenUnit
   view?: ViewMode
   rechargePrice?: boolean
@@ -54,28 +55,27 @@ function normalizeViewMode(value: unknown): ViewMode {
 }
 
 export function useFilters(models: PricingModel[]) {
-  const search = useSearch({ from: '/pricing/' })
-  const [filterState, setFilterState] = useState<FilterState>(() => ({
-    search: search.search,
-    sort: search.sort,
-    vendor: search.vendor,
-    group: search.group,
-    quotaType: search.quotaType,
-    endpointType: search.endpointType,
-    tag: search.tag,
-    tokenUnit: search.tokenUnit,
-    view: search.view,
-    rechargePrice: search.rechargePrice,
-  }))
+  const search = useSearch({ from: '/pricing/', structuralSharing: true })
+  const [filterState, setFilterState] = useState<FilterState>(search)
+  const applyFilters = useCallback((filters: FilterState) => {
+    setFilterState(filters)
+  }, [])
+
+  // Keep manual edits local until navigation changes the search parameters.
+  useEffect(() => {
+    applyFilters(search)
+  }, [applyFilters, search])
 
   const searchInput = filterState.search || ''
   const debouncedSearchInput = useDebounce(searchInput, 200)
-  const sortBy = filterState.sort || SORT_OPTIONS.NAME
+  const sortBy = filterState.sort || SORT_OPTIONS.CATALOG
   const vendorFilter = filterState.vendor || FILTER_ALL
   const groupFilter = filterState.group || FILTER_ALL
   const quotaTypeFilter = filterState.quotaType || QUOTA_TYPES.ALL
   const endpointTypeFilter = filterState.endpointType || ENDPOINT_TYPES.ALL
   const tagFilter = filterState.tag || FILTER_ALL
+  const capabilityFilter: CatalogCapability | 'all' =
+    filterState.capability || FILTER_ALL
   const tokenUnit: TokenUnit =
     filterState.tokenUnit === 'K' ? 'K' : DEFAULT_TOKEN_UNIT
   const viewMode = normalizeViewMode(filterState.view)
@@ -99,7 +99,7 @@ export function useFilters(models: PricingModel[]) {
   )
   const setSortBy = useCallback(
     (v: string) =>
-      updateFilters({ sort: v === SORT_OPTIONS.NAME ? undefined : v }),
+      updateFilters({ sort: v === SORT_OPTIONS.CATALOG ? undefined : v }),
     [updateFilters]
   )
   const setVendorFilter = useCallback(
@@ -124,6 +124,11 @@ export function useFilters(models: PricingModel[]) {
   )
   const setTagFilter = useCallback(
     (v: string) => updateFilters({ tag: v === FILTER_ALL ? undefined : v }),
+    [updateFilters]
+  )
+  const setCapabilityFilter = useCallback(
+    (v: CatalogCapability | 'all') =>
+      updateFilters({ capability: v === FILTER_ALL ? undefined : v }),
     [updateFilters]
   )
   const setTokenUnit = useCallback(
@@ -156,6 +161,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: quotaTypeFilter,
       endpointType: endpointTypeFilter,
       tag: tagFilter,
+      capability: capabilityFilter,
       sortBy,
     })
   }, [
@@ -166,6 +172,7 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    capabilityFilter,
     sortBy,
   ])
 
@@ -175,8 +182,16 @@ export function useFilters(models: PricingModel[]) {
       groupFilter !== FILTER_ALL ||
       quotaTypeFilter !== QUOTA_TYPES.ALL ||
       endpointTypeFilter !== ENDPOINT_TYPES.ALL ||
-      tagFilter !== FILTER_ALL,
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      tagFilter !== FILTER_ALL ||
+      capabilityFilter !== FILTER_ALL,
+    [
+      vendorFilter,
+      groupFilter,
+      quotaTypeFilter,
+      endpointTypeFilter,
+      tagFilter,
+      capabilityFilter,
+    ]
   )
 
   const activeFilterCount = useMemo(
@@ -185,8 +200,16 @@ export function useFilters(models: PricingModel[]) {
       (groupFilter !== FILTER_ALL ? 1 : 0) +
       (quotaTypeFilter !== QUOTA_TYPES.ALL ? 1 : 0) +
       (endpointTypeFilter !== ENDPOINT_TYPES.ALL ? 1 : 0) +
-      (tagFilter !== FILTER_ALL ? 1 : 0),
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      (tagFilter !== FILTER_ALL ? 1 : 0) +
+      (capabilityFilter !== FILTER_ALL ? 1 : 0),
+    [
+      vendorFilter,
+      groupFilter,
+      quotaTypeFilter,
+      endpointTypeFilter,
+      tagFilter,
+      capabilityFilter,
+    ]
   )
 
   const clearFilters = useCallback(() => {
@@ -196,6 +219,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: undefined,
       endpointType: undefined,
       tag: undefined,
+      capability: undefined,
     })
   }, [updateFilters])
 
@@ -211,6 +235,7 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    capabilityFilter,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -221,6 +246,7 @@ export function useFilters(models: PricingModel[]) {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
+    setCapabilityFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,
@@ -228,7 +254,18 @@ export function useFilters(models: PricingModel[]) {
     hasActiveFilters,
     activeFilterCount,
     availableTags,
+    applyFilters,
     clearFilters,
     clearSearch,
+    resultsKey: JSON.stringify([
+      debouncedSearchInput,
+      sortBy,
+      vendorFilter,
+      groupFilter,
+      quotaTypeFilter,
+      endpointTypeFilter,
+      tagFilter,
+      capabilityFilter,
+    ]),
   }
 }

@@ -22,13 +22,74 @@ import {
   QUOTA_TYPES,
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
+  CATALOG_CAPABILITIES,
 } from '../constants'
-import type { PricingModel } from '../types'
+import type { CatalogCapability, PricingModel } from '../types'
 import { hasTaskUsageSchema } from './dynamic-price'
 
 // ----------------------------------------------------------------------------
 // Filter Utilities
 // ----------------------------------------------------------------------------
+
+/** Do not infer capabilities from model names or alter reserved backend metadata. */
+export function getCatalogCapabilities(
+  model: PricingModel
+): CatalogCapability[] {
+  const categories = new Set<CatalogCapability>()
+  const tags = new Set(parseTags(model.tags).map((tag) => tag.toLowerCase()))
+  for (const [category, config] of Object.entries(CATALOG_CAPABILITIES)) {
+    if (config.tags.some((tag) => tags.has(tag))) {
+      categories.add(category as CatalogCapability)
+    }
+  }
+  const endpoints = model.supported_endpoint_types ?? []
+  const capabilities = model.capabilities ?? []
+  const inputs = model.input_modalities ?? []
+  const outputs = model.output_modalities ?? []
+  if (
+    capabilities.includes('reasoning') ||
+    outputs.includes('text') ||
+    endpoints.some((endpoint) =>
+      [
+        'openai',
+        'openai-response',
+        'openai-response-compact',
+        'openai-alpha-search',
+        'anthropic',
+        'gemini',
+      ].includes(endpoint)
+    )
+  ) {
+    categories.add('text')
+  }
+  if (
+    capabilities.includes('vision') ||
+    (outputs.includes('text') &&
+      (inputs.includes('image') || inputs.includes('video')))
+  ) {
+    categories.add('multi')
+  }
+  if (outputs.includes('image') || endpoints.includes('image-generation')) {
+    categories.add('image')
+  }
+  if (outputs.includes('video') || endpoints.includes('openai-video')) {
+    categories.add('video')
+  }
+  if (inputs.includes('audio') || outputs.includes('audio')) {
+    categories.add('audio')
+  }
+  if (
+    capabilities.includes('embeddings') ||
+    endpoints.includes('embeddings') ||
+    endpoints.includes('jina-rerank')
+  ) {
+    categories.add('embed')
+  }
+  // Prefer specific generation capabilities for the single compact-card badge.
+  return (
+    ['video', 'image', 'audio', 'embed', 'multi', 'text'] as const
+  ).filter((category) => categories.has(category))
+}
 
 /**
  * Filter models by search query
@@ -122,6 +183,32 @@ export function sortModels(
   const sorted = [...models]
 
   switch (sortBy) {
+    case SORT_OPTIONS.CATALOG: {
+      const order: Record<CatalogCapability, number> = {
+        text: 0,
+        multi: 1,
+        video: 2,
+        image: 3,
+        audio: 4,
+        embed: 5,
+      }
+      const priorities = new Map(
+        models.map((model) => {
+          const primary = getCatalogCapabilities(model)[0]
+          return [model, primary ? order[primary] : 6]
+        })
+      )
+      sorted.sort((a, b) => {
+        const category = (priorities.get(a) ?? 6) - (priorities.get(b) ?? 6)
+        if (category !== 0) return category
+        const length = a.model_name.length - b.model_name.length
+        if (length !== 0) return length
+        return a.model_name < b.model_name
+          ? -1
+          : Number(a.model_name > b.model_name)
+      })
+      break
+    }
     case SORT_OPTIONS.NAME:
       sorted.sort((a, b) =>
         (a.model_name || '').localeCompare(b.model_name || '')
@@ -151,6 +238,7 @@ export function filterAndSortModels(
     endpointType: string
     tag: string
     sortBy: string
+    capability?: CatalogCapability | 'all'
   }
 ): PricingModel[] {
   let result = filterBySearch(models, filters.search)
@@ -159,6 +247,12 @@ export function filterAndSortModels(
   result = filterByQuotaType(result, filters.quotaType)
   result = filterByEndpointType(result, filters.endpointType)
   result = filterByTag(result, filters.tag)
+  if (filters.capability && filters.capability !== FILTER_ALL) {
+    const capability = filters.capability
+    result = result.filter((model) =>
+      getCatalogCapabilities(model).includes(capability)
+    )
+  }
   result = sortModels(result, filters.sortBy)
 
   return result
@@ -190,7 +284,7 @@ export function extractAllTags(models: PricingModel[]): string[] {
     }
   })
 
-  return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  return [...tagSet].sort((a, b) => a.localeCompare(b))
 }
 
 /**

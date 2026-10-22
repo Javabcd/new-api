@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowUpDown, Check, Filter } from 'lucide-react'
+import { ArrowUpDown, Check, Filter, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -36,6 +36,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -43,6 +49,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getSortLabels, type SortOption, type ViewMode } from '../constants'
@@ -50,6 +58,7 @@ import type { PricingModel, PricingVendor, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
 export interface PricingToolbarProps {
+  presentation?: 'sidebar' | 'catalog'
   filteredCount: number
   totalCount?: number
   sortBy: string
@@ -78,15 +87,91 @@ export interface PricingToolbarProps {
   hasActiveFilters: boolean
   activeFilterCount: number
   onClearFilters: () => void
+  onResetAll?: () => void
+  filterSummary?: string
 }
 
 export function PricingToolbar(props: PricingToolbarProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const sortLabels = getSortLabels(t)
 
+  const displaySettings = (
+    <>
+      <ToggleGroup
+        value={[props.showRechargePrice ? 'recharge' : 'standard']}
+        onValueChange={(values) => {
+          if (values.length > 0) {
+            props.onRechargePriceChange(values[0] === 'recharge')
+          }
+        }}
+        variant='outline'
+        size='sm'
+        aria-label={t('Price display mode')}
+      >
+        <ToggleGroupItem value='standard'>{t('Standard')}</ToggleGroupItem>
+        <ToggleGroupItem value='recharge'>{t('Recharge')}</ToggleGroupItem>
+      </ToggleGroup>
+      <ToggleGroup
+        value={[props.tokenUnit]}
+        onValueChange={(values) => {
+          if (values[0] === 'M' || values[0] === 'K') {
+            props.onTokenUnitChange(values[0])
+          }
+        }}
+        variant='outline'
+        size='sm'
+        aria-label={t('Token unit')}
+      >
+        <ToggleGroupItem value='M'>/1M</ToggleGroupItem>
+        <ToggleGroupItem value='K'>/1K</ToggleGroupItem>
+      </ToggleGroup>
+
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              className='h-8 gap-1.5 px-3 text-xs'
+            />
+          }
+        >
+          <ArrowUpDown className='size-3.5' />
+          <span>{sortLabels[props.sortBy as SortOption] || t('Sort')}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-44'>
+          <DropdownMenuGroup>
+            {Object.entries(sortLabels).map(([value, label]) => (
+              <DropdownMenuItem
+                key={value}
+                onClick={() => props.onSortChange(value)}
+                className='gap-2'
+              >
+                <Check
+                  className={cn(
+                    'size-4 shrink-0',
+                    props.sortBy === value ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  )
+
   return (
-    <div className='bg-card rounded-xl border p-3'>
+    <div
+      className={cn(
+        'bg-card rounded-xl border p-3',
+        props.presentation === 'catalog' && 'mxy-catalog-result-toolbar'
+      )}
+    >
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <div className='flex items-center gap-2'>
           <Button
@@ -94,10 +179,18 @@ export function PricingToolbar(props: PricingToolbarProps) {
             variant='outline'
             size='sm'
             onClick={() => setMobileFiltersOpen(true)}
-            className='gap-1.5 xl:hidden'
+            className={cn(
+              'gap-1.5',
+              props.presentation === 'catalog' && 'mxy-catalog-advanced',
+              props.presentation !== 'catalog' && 'xl:hidden'
+            )}
           >
             <Filter className='size-4' />
-            {t('Filter')}
+            <span className='mxy-catalog-control-label'>
+              {props.presentation === 'catalog'
+                ? t('Advanced filters')
+                : t('Filter')}
+            </span>
             {props.activeFilterCount > 0 && (
               <Badge className='ml-0.5 size-5 justify-center p-0 text-[10px]'>
                 {props.activeFilterCount}
@@ -105,84 +198,68 @@ export function PricingToolbar(props: PricingToolbarProps) {
             )}
           </Button>
 
-          <div className='text-muted-foreground flex items-baseline gap-1 text-sm'>
+          <div className='mxy-result-count text-muted-foreground flex items-baseline gap-1 text-sm'>
             <span className='text-foreground font-semibold tabular-nums'>
-              {props.filteredCount.toLocaleString()}
+              {formatNumber(props.filteredCount, locale)}
             </span>
             <span>{props.filteredCount === 1 ? t('model') : t('models')}</span>
             {props.totalCount != null &&
               props.filteredCount !== props.totalCount && (
                 <span className='text-muted-foreground/60 text-xs'>
-                  / {props.totalCount.toLocaleString()}
+                  / {formatNumber(props.totalCount, locale)}
                 </span>
               )}
           </div>
         </div>
 
-        <div className='flex min-w-0 flex-wrap items-center gap-2'>
-          <ToggleGroup
-            value={[props.showRechargePrice ? 'recharge' : 'standard']}
-            onValueChange={(values) => {
-              if (values.length > 0) {
-                props.onRechargePriceChange(values[0] === 'recharge')
-              }
-            }}
-            variant='outline'
-            size='sm'
-            aria-label={t('Price display mode')}
-          >
-            <ToggleGroupItem value='standard'>{t('Standard')}</ToggleGroupItem>
-            <ToggleGroupItem value='recharge'>{t('Recharge')}</ToggleGroupItem>
-          </ToggleGroup>
-          <ToggleGroup
-            value={[props.tokenUnit]}
-            onValueChange={(values) => {
-              if (values[0] === 'M' || values[0] === 'K') {
-                props.onTokenUnitChange(values[0])
-              }
-            }}
-            variant='outline'
-            size='sm'
-            aria-label={t('Token unit')}
-          >
-            <ToggleGroupItem value='M'>/1M</ToggleGroupItem>
-            <ToggleGroupItem value='K'>/1K</ToggleGroupItem>
-          </ToggleGroup>
-
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className='h-8 gap-1.5 px-3 text-xs'
-                />
-              }
+        {props.presentation === 'catalog' && (
+          <>
+            {props.filterSummary && (
+              <span className='mxy-catalog-filter-summary'>
+                {props.filterSummary}
+              </span>
+            )}
+            <Button
+              variant='link'
+              className='mxy-catalog-reset'
+              onClick={props.onResetAll ?? props.onClearFilters}
             >
-              <ArrowUpDown className='size-3.5' />
-              <span>{sortLabels[props.sortBy as SortOption] || t('Sort')}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end' className='w-44'>
-              <DropdownMenuGroup>
-                {Object.entries(sortLabels).map(([value, label]) => (
-                  <DropdownMenuItem
-                    key={value}
-                    onClick={() => props.onSortChange(value)}
-                    className='gap-2'
-                  >
-                    <Check
-                      className={cn(
-                        'size-4 shrink-0',
-                        props.sortBy === value ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              {t('Reset filters')}
+            </Button>
+          </>
+        )}
+
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
+          {props.presentation === 'catalog' ? (
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='mxy-catalog-display-trigger'
+                  />
+                }
+              >
+                <Settings2 aria-hidden='true' className='size-4' />
+                <span className='mxy-catalog-control-label'>
+                  {t('Display settings')}
+                </span>
+              </PopoverTrigger>
+              <PopoverContent
+                align='end'
+                className='mxy-theme mxy-reference mxy-catalog-settings'
+              >
+                <PopoverTitle>{t('Display settings')}</PopoverTitle>
+                <div className='flex flex-wrap items-center gap-3'>
+                  {displaySettings}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : (
+            displaySettings
+          )}
 
           <DataTableViewModeToggle
             value={props.viewMode}
@@ -194,7 +271,12 @@ export function PricingToolbar(props: PricingToolbarProps) {
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <SheetContent
           side='left'
-          className={sideDrawerContentClassName('sm:max-w-md')}
+          className={sideDrawerContentClassName(
+            cn(
+              'sm:max-w-md',
+              props.presentation === 'catalog' && 'mxy-theme mxy-reference'
+            )
+          )}
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('Filter')}</SheetTitle>

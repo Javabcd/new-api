@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
-import type { TokenUnit } from './types'
+import type { CatalogCapability, TokenUnit } from './types'
 
 // ----------------------------------------------------------------------------
 // Pricing Constants
@@ -26,6 +26,7 @@ import type { TokenUnit } from './types'
 
 /** Sort options for pricing models */
 export const SORT_OPTIONS = {
+  CATALOG: 'catalog',
   NAME: 'name',
   PRICE_LOW: 'price-low',
   PRICE_HIGH: 'price-high',
@@ -35,6 +36,7 @@ export type SortOption = (typeof SORT_OPTIONS)[keyof typeof SORT_OPTIONS]
 
 export function getSortLabels(t: TFunction): Record<SortOption, string> {
   return {
+    [SORT_OPTIONS.CATALOG]: t('Catalog order'),
     [SORT_OPTIONS.NAME]: t('Name'),
     [SORT_OPTIONS.PRICE_LOW]: t('Price: Low to High'),
     [SORT_OPTIONS.PRICE_HIGH]: t('Price: High to Low'),
@@ -43,6 +45,59 @@ export function getSortLabels(t: TFunction): Record<SortOption, string> {
 
 /** Filter values */
 export const FILTER_ALL = 'all'
+
+export const CATALOG_CAPABILITY_VALUES = [
+  'text',
+  'multi',
+  'image',
+  'video',
+  'audio',
+  'embed',
+] as const
+
+export const CATALOG_CAPABILITIES: Record<
+  CatalogCapability,
+  { labelKey: string; shortLabelKey: string; tags: readonly string[] }
+> = {
+  text: {
+    labelKey: 'Chat and reasoning',
+    shortLabelKey: 'Chat',
+    tags: ['text', 'chat', 'reasoning', '对话', '推理', '对话与推理'],
+  },
+  multi: {
+    labelKey: 'Multimodal understanding',
+    shortLabelKey: 'Multimodal',
+    tags: ['vision', 'multimodal', '多模态', '视觉理解', '多模态理解'],
+  },
+  image: {
+    labelKey: 'Image generation',
+    shortLabelKey: 'Image',
+    tags: ['image-generation', 'text-to-image', '图像生成', '图片生成'],
+  },
+  video: {
+    labelKey: 'Video generation',
+    shortLabelKey: 'Video',
+    tags: ['video-generation', 'text-to-video', '视频生成'],
+  },
+  audio: {
+    labelKey: 'Audio and music',
+    shortLabelKey: 'Audio',
+    tags: ['audio', 'music', 'speech', '音频', '音乐', '语音', '音频与音乐'],
+  },
+  embed: {
+    labelKey: 'Embeddings and reranking',
+    shortLabelKey: 'Embeddings',
+    tags: [
+      'embedding',
+      'embeddings',
+      'rerank',
+      'reranking',
+      '向量',
+      '重排',
+      '向量与重排',
+    ],
+  },
+}
 
 /** Quota type options */
 export const QUOTA_TYPES = {

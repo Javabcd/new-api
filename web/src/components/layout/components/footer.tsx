@@ -35,10 +35,13 @@ interface FooterColumnProps {
 }
 
 interface FooterProps {
+  appearance?: 'default' | 'marketing'
   logo?: string
   name?: string
   columns?: FooterColumnProps[]
   copyright?: string
+  copyrightName?: string
+  subtitle?: string
   className?: string
 }
 
@@ -66,9 +69,11 @@ function FooterLinkItem(props: { link: FooterLink }) {
     )
   }
 
+  const [to, hash] = props.link.href.split('#')
   return (
     <Link
-      to={props.link.href}
+      to={to || '/'}
+      hash={hash}
       className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
     >
       {label}
@@ -150,6 +155,7 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
 }
 
 export function Footer(props: FooterProps) {
+  const marketing = props.appearance === 'marketing'
   const { t } = useTranslation()
   const {
     systemName,
@@ -158,8 +164,12 @@ export function Footer(props: FooterProps) {
     demoSiteEnabled,
   } = useSystemConfig()
 
-  const displayLogo = systemLogo || props.logo || '/logo.png'
-  const displayName = systemName || props.name || 'New API'
+  let displayLogo = systemLogo || props.logo || '/logo.png'
+  let displayName = systemName || props.name || 'New API'
+  if (marketing) {
+    displayLogo = props.logo || displayLogo
+    displayName = props.name || displayName
+  }
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
@@ -248,7 +258,11 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/40 relative z-10 border-t', props.className)}
+      className={cn(
+        'border-border/40 relative z-10 border-t',
+        marketing && 'mxy-footer',
+        props.className
+      )}
     >
       <div className='mx-auto max-w-6xl px-6 py-12 md:py-16'>
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
@@ -262,24 +276,32 @@ export function Footer(props: FooterProps) {
               />
               <span className='text-sm font-semibold tracking-tight'>
                 {displayName}
+                {props.subtitle && <small>{props.subtitle}</small>}
               </span>
             </Link>
             <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
-              {t('Powerful API Management Platform')}
+              {marketing
+                ? t('One gateway for every AI modality')
+                : t('Powerful API Management Platform')}
             </p>
           </div>
 
           {/* Links columns */}
-          {isDemoSiteMode && (
-            <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
+          {(isDemoSiteMode || marketing) && (
+            <div
+              className={cn(
+                'grid grid-cols-3 gap-8 md:gap-16',
+                marketing && 'mxy-footer-columns'
+              )}
+            >
+              {displayColumns.map((column) => (
+                <div key={column.title}>
                   <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
                     {t(column.title)}
                   </p>
                   <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
+                    {column.links.map((link) => (
+                      <li key={`${link.text}:${link.href}`}>
                         <FooterLinkItem link={link} />
                       </li>
                     ))}
@@ -295,7 +317,7 @@ export function Footer(props: FooterProps) {
         <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
           <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
             <span>
-              &copy; {currentYear} {displayName}.{' '}
+              &copy; {currentYear} {props.copyrightName ?? displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}
             </span>
             <LegalLinks leadingSeparator />

@@ -20,6 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { Pricing } from '@/features/pricing'
+import { CATALOG_CAPABILITY_VALUES } from '@/features/pricing/constants'
 import { getModuleAccessForGuard } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -31,6 +32,7 @@ const pricingSearchSchema = z.object({
   quotaType: z.string().optional(),
   endpointType: z.string().optional(),
   tag: z.string().optional(),
+  capability: z.enum(CATALOG_CAPABILITY_VALUES).optional().catch(undefined),
   tokenUnit: z.enum(['M', 'K']).optional(),
   view: z.enum(['card', 'table']).optional().catch(undefined),
   rechargePrice: z.boolean().optional(),

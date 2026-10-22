@@ -16,10 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
+import { MARKETING_BRAND } from '@/features/marketing/brand'
+import { toIntlLocale } from '@/i18n/languages'
+import { cn } from '@/lib/utils'
+
+import '@/styles/maixiaoyun.css'
+import '@/styles/maixiaoyun-reference.css'
+import '@/styles/maixiaoyun-home.css'
+import '@/styles/maixiaoyun-catalog.css'
+
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
 type PublicLayoutProps = {
+  appearance?: 'default' | 'marketing'
+  marketingVariant?: 'default' | 'home' | 'catalog'
+  notice?: React.ReactNode
   children: React.ReactNode
   showMainContainer?: boolean
   navContent?: React.ReactNode
@@ -33,16 +47,46 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
+  const { t, i18n } = useTranslation()
+  const marketing = props.appearance === 'marketing'
   return (
-    <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
+    <div
+      lang={toIntlLocale(i18n.resolvedLanguage || i18n.language)}
+      className={cn(
+        'bg-background text-foreground relative min-h-svh overflow-x-clip',
+        marketing && 'mxy-theme mxy-site',
+        marketing &&
+          props.marketingVariant !== undefined &&
+          props.marketingVariant !== 'default' &&
+          'mxy-reference',
+        marketing && props.marketingVariant === 'home' && 'mxy-home',
+        marketing && props.marketingVariant === 'catalog' && 'mxy-catalog'
+      )}
+    >
+      {marketing &&
+        (props.notice ?? (
+          <div className='mxy-notice'>
+            <span>AIMXY</span>
+            {t('One API. Text, images, video and audio.')}
+          </div>
+        ))}
       <PublicHeader
+        appearance={props.appearance}
+        marketingVariant={props.marketingVariant}
         navContent={props.navContent}
         navLinks={props.navLinks}
         showThemeSwitch={props.showThemeSwitch}
         showAuthButtons={props.showAuthButtons}
         showNotifications={props.showNotifications}
-        logo={props.logo}
-        siteName={props.siteName}
+        logo={
+          props.logo ??
+          (marketing ? (
+            <img src={MARKETING_BRAND.logo} alt='' className='size-full' />
+          ) : undefined)
+        }
+        siteName={
+          props.siteName ?? (marketing ? MARKETING_BRAND.name : undefined)
+        }
         {...props.headerProps}
       />
 

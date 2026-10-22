@@ -16,11 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
+import { Link, useRouter } from '@tanstack/react-router'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ErrorState } from '@/components/error-state'
 import { PublicLayout } from '@/components/layout'
-import { PageTransition } from '@/components/page-transition'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { MarketingFooter } from '@/features/marketing/marketing-footer'
+import { RankingsPreview } from '@/features/marketing/rankings-preview'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   LoadingSkeleton,
@@ -32,12 +47,17 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import { CATALOG_CAPABILITIES, EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
+import { getCatalogCapabilities } from './lib/filters'
 
 export function Pricing() {
-  const { t } = useTranslation()
+  const router = useRouter()
+  const catalogResultsRef = useRef<HTMLElement>(null)
+  const catalogFiltersRef = useRef<HTMLElement>(null)
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -50,6 +70,8 @@ export function Pricing() {
     endpointMap,
     autoGroups,
     isLoading,
+    error,
+    refetch,
     priceRate,
     usdExchangeRate,
   } = usePricingData()
@@ -62,6 +84,9 @@ export function Pricing() {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    capabilityFilter,
+    setCapabilityFilter,
+    resultsKey,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -79,9 +104,24 @@ export function Pricing() {
     hasActiveFilters,
     activeFilterCount,
     availableTags,
+    applyFilters,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
+
+  const previousResultsKey = useRef(resultsKey)
+  const scrollToCatalogResults = useCallback(() => {
+    const results = catalogResultsRef.current
+    const filters = catalogFiltersRef.current
+    if (!results || !filters) return
+
+    const filtersHeight = filters.getBoundingClientRect().height
+    results.style.setProperty(
+      '--mxy-catalog-tools-height',
+      `${filtersHeight}px`
+    )
+    results.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [])
 
   const handleModelClick = useCallback((modelName: string) => {
     setSelectedModelName(modelName)
@@ -110,7 +150,75 @@ export function Pricing() {
     clearSearch()
   }, [clearFilters, clearSearch])
 
+  useEffect(() => {
+    const filters = catalogFiltersRef.current
+    if (!filters) return
+    const updateOffset = () => {
+      catalogResultsRef.current?.style.setProperty(
+        '--mxy-catalog-tools-height',
+        `${filters.getBoundingClientRect().height}px`
+      )
+    }
+    updateOffset()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateOffset)
+    observer.observe(filters)
+    return () => observer.disconnect()
+  }, [])
+
+  const authenticated = useAuthStore((state) => Boolean(state.auth.user))
+  const ready = !isLoading && !error
+
+  useLayoutEffect(() => {
+    if (!ready || previousResultsKey.current === resultsKey) return
+    previousResultsKey.current = resultsKey
+    scrollToCatalogResults()
+  }, [ready, resultsKey, scrollToCatalogResults])
+
+  const stats = useMemo(() => {
+    const capabilities = new Set(models.flatMap(getCatalogCapabilities))
+    const endpoints = new Set(
+      models.flatMap((model) => model.supported_endpoint_types ?? [])
+    )
+    const protocols: string[] = []
+    if ([...endpoints].some((endpoint) => endpoint.startsWith('openai'))) {
+      protocols.push('OpenAI')
+    }
+    if (endpoints.has('anthropic')) protocols.push('Anthropic')
+    return {
+      capabilities: capabilities.size,
+      providers: new Set(
+        models
+          .map((model) => model.vendor_id ?? model.vendor_name)
+          .filter(Boolean)
+      ).size,
+      protocols,
+    }
+  }, [models])
+  const filterSummary = [
+    vendorFilter !== 'all' ? vendorFilter : '',
+    capabilityFilter !== 'all'
+      ? t(CATALOG_CAPABILITIES[capabilityFilter].labelKey)
+      : '',
+    searchInput.trim(),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   const renderPricingContent = () => {
+    if (isLoading) {
+      return <LoadingSkeleton presentation='catalog' viewMode={viewMode} />
+    }
+    if (error) {
+      return (
+        <ErrorState
+          title={t('Unable to load models')}
+          onRetry={() => {
+            void refetch()
+          }}
+        />
+      )
+    }
     if (filteredModels.length === 0) {
       return (
         <EmptyState
@@ -124,6 +232,9 @@ export function Pricing() {
     if (viewMode === VIEW_MODES.CARD) {
       return (
         <ModelCardGrid
+          key={resultsKey}
+          appearance='marketing'
+          presentation='compact'
           models={filteredModels}
           onModelClick={handleModelClick}
           priceRate={priceRate}
@@ -148,142 +259,228 @@ export function Pricing() {
     )
   }
 
-  if (isLoading) {
-    return (
-      <PublicLayout showMainContainer={false}>
-        <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
-          <LoadingSkeleton viewMode={viewMode} />
-        </div>
-      </PublicLayout>
-    )
-  }
-
   return (
-    <PublicLayout showMainContainer={false}>
-      <div className='relative'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-x-0 top-0 h-[600px] opacity-20 dark:opacity-[0.10]'
-          style={{
-            background: [
-              'radial-gradient(ellipse 60% 50% at 20% 20%, oklch(0.72 0.18 250 / 80%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 50% 40% at 80% 15%, oklch(0.65 0.15 200 / 60%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 40% 35% at 50% 70%, oklch(0.70 0.12 280 / 40%) 0%, transparent 70%)',
-            ].join(', '),
-            maskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-          }}
-        />
-        <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
-          <header className='mx-auto mb-5 max-w-3xl pt-5 text-center sm:mb-10 sm:pt-10'>
-            <h1 className='text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Model Square')}
-            </h1>
-            <p className='text-muted-foreground/80 mt-3 text-sm sm:mt-4 sm:text-base'>
-              {t('This site currently has {{count}} models enabled', {
-                count: models?.length || 0,
-              })}
-            </p>
-            <p className='text-muted-foreground/60 mx-auto mt-2 max-w-2xl text-xs leading-relaxed sm:text-sm'>
-              {t(
-                'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
-              )}
-            </p>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-              className='mx-auto mt-4 max-w-2xl sm:mt-6'
-            />
-          </header>
-
-          <div className='grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
-            <PricingSidebar
-              quotaTypeFilter={quotaTypeFilter}
-              endpointTypeFilter={endpointTypeFilter}
-              vendorFilter={vendorFilter}
-              groupFilter={groupFilter}
-              tagFilter={tagFilter}
-              onQuotaTypeChange={setQuotaTypeFilter}
-              onEndpointTypeChange={setEndpointTypeFilter}
-              onVendorChange={setVendorFilter}
-              onGroupChange={setGroupFilter}
-              onTagChange={setTagFilter}
-              vendors={vendors || []}
-              groups={availableGroups}
-              groupRatios={groupRatio}
-              tags={availableTags}
-              models={models || []}
-              hasActiveFilters={hasActiveFilters}
-              onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto xl:block'
-            />
-
-            <main className='min-w-0 space-y-4'>
-              <PricingToolbar
-                filteredCount={filteredModels.length}
-                totalCount={models?.length}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-                tokenUnit={tokenUnit}
-                onTokenUnitChange={setTokenUnit}
-                showRechargePrice={showRechargePrice}
-                onRechargePriceChange={setShowRechargePrice}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                quotaTypeFilter={quotaTypeFilter}
-                endpointTypeFilter={endpointTypeFilter}
-                vendorFilter={vendorFilter}
-                groupFilter={groupFilter}
-                tagFilter={tagFilter}
-                onQuotaTypeChange={setQuotaTypeFilter}
-                onEndpointTypeChange={setEndpointTypeFilter}
-                onVendorChange={setVendorFilter}
-                onGroupChange={setGroupFilter}
-                onTagChange={setTagFilter}
-                vendors={vendors || []}
-                groups={availableGroups}
-                groupRatios={groupRatio}
-                tags={availableTags}
-                models={models || []}
-                hasActiveFilters={hasActiveFilters}
-                activeFilterCount={activeFilterCount}
-                onClearFilters={clearFilters}
-              />
-
-              {renderPricingContent()}
-            </main>
+    <PublicLayout
+      appearance='marketing'
+      marketingVariant='catalog'
+      showMainContainer={false}
+      notice={
+        <div className='mxy-notice'>
+          <div className='mxy-wrap'>
+            <span className='mxy-notice-pill'>AIMXY</span>
+            <span>
+              {ready
+                ? t(
+                    'Live catalog · {{models}} models · {{providers}} providers',
+                    {
+                      models: formatNumber(models.length, locale),
+                      providers: formatNumber(stats.providers, locale),
+                    }
+                  )
+                : t('Live model catalog')}
+            </span>
           </div>
-
-          {selectedModel && (
-            <ModelDetailsDrawer
-              open={Boolean(selectedModel)}
-              onOpenChange={(open) => {
-                if (!open) setSelectedModelName(null)
-              }}
-              model={selectedModel}
-              groupRatio={groupRatio || {}}
-              usableGroup={usableGroup || {}}
-              endpointMap={
-                (endpointMap as Record<
-                  string,
-                  { path?: string; method?: string }
-                >) || {}
-              }
-              autoGroups={autoGroups || []}
-              priceRate={priceRate ?? 1}
-              usdExchangeRate={usdExchangeRate ?? 1}
-              tokenUnit={tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
-          )}
-        </PageTransition>
-      </div>
+        </div>
+      }
+    >
+      <main className='mxy-catalog-page'>
+        <section className='mxy-catalog-hero'>
+          <div
+            className='mxy-catalog-glow mxy-catalog-glow-peach'
+            aria-hidden='true'
+          />
+          <div
+            className='mxy-catalog-glow mxy-catalog-glow-lilac'
+            aria-hidden='true'
+          />
+          <div className='mxy-wrap'>
+            <Badge variant='outline' className='mxy-eyebrow'>
+              <span className='mxy-dot' aria-hidden='true' />
+              {t('Model Square · Synced with the live catalog')}
+            </Badge>
+            <h1>
+              {t('One key, access')}{' '}
+              <span className='mxy-gradient-text'>
+                {ready
+                  ? t('{{total}} available models', {
+                      total: formatNumber(models.length, locale),
+                    })
+                  : t('Available AI models')}
+              </span>
+            </h1>
+            <p>
+              {t(
+                'Browse the live catalog by provider and declared capabilities. View model details, current prices and API examples. Models share authentication and billing; switch models by changing the model parameter.'
+              )}
+            </p>
+            {ready && (
+              <div className='mxy-catalog-counts'>
+                <span>
+                  <strong>{formatNumber(models.length, locale)}</strong>
+                  {t('Available models')}
+                </span>
+                <span>
+                  <strong>{formatNumber(stats.providers, locale)}</strong>
+                  {t('Providers and sources')}
+                </span>
+                <span>
+                  <strong>{formatNumber(stats.capabilities, locale)}</strong>
+                  {t('Labeled capabilities')}
+                </span>
+                {stats.protocols.length > 0 && (
+                  <span>
+                    {t('Compatible with')}{' '}
+                    <strong>{stats.protocols.join(' / ')}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+        <section
+          ref={catalogFiltersRef}
+          className='mxy-catalog-filter-section'
+          aria-label={t('Search and filter models')}
+        >
+          <PricingSidebar
+            presentation='catalog'
+            quotaTypeFilter={quotaTypeFilter}
+            endpointTypeFilter={endpointTypeFilter}
+            vendorFilter={vendorFilter}
+            groupFilter={groupFilter}
+            tagFilter={tagFilter}
+            onQuotaTypeChange={setQuotaTypeFilter}
+            onEndpointTypeChange={setEndpointTypeFilter}
+            onVendorChange={setVendorFilter}
+            onGroupChange={setGroupFilter}
+            onTagChange={setTagFilter}
+            vendors={vendors || []}
+            groups={availableGroups}
+            groupRatios={groupRatio}
+            tags={availableTags}
+            models={models || []}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
+            className='mxy-wrap'
+            capabilityFilter={capabilityFilter}
+            onCapabilityChange={setCapabilityFilter}
+            search={
+              <SearchBar
+                value={searchInput}
+                onChange={setSearchInput}
+                onClear={clearSearch}
+                placeholder={t('Search models, e.g. seedance / gpt / image')}
+                className='mxy-catalog-search'
+              />
+            }
+          />
+        </section>
+        <section
+          ref={catalogResultsRef}
+          className='mxy-wrap mxy-catalog-results'
+          aria-label={t('Model results')}
+        >
+          <PricingToolbar
+            onResetAll={handleClearAll}
+            filterSummary={filterSummary}
+            presentation='catalog'
+            filteredCount={filteredModels.length}
+            totalCount={models?.length}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            tokenUnit={tokenUnit}
+            onTokenUnitChange={setTokenUnit}
+            showRechargePrice={showRechargePrice}
+            onRechargePriceChange={setShowRechargePrice}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            quotaTypeFilter={quotaTypeFilter}
+            endpointTypeFilter={endpointTypeFilter}
+            vendorFilter={vendorFilter}
+            groupFilter={groupFilter}
+            tagFilter={tagFilter}
+            onQuotaTypeChange={setQuotaTypeFilter}
+            onEndpointTypeChange={setEndpointTypeFilter}
+            onVendorChange={setVendorFilter}
+            onGroupChange={setGroupFilter}
+            onTagChange={setTagFilter}
+            vendors={vendors || []}
+            groups={availableGroups}
+            groupRatios={groupRatio}
+            tags={availableTags}
+            models={models || []}
+            hasActiveFilters={hasActiveFilters}
+            activeFilterCount={activeFilterCount}
+            onClearFilters={clearFilters}
+          />
+          {renderPricingContent()}
+        </section>
+        {selectedModel && (
+          <ModelDetailsDrawer
+            open={Boolean(selectedModel)}
+            onOpenChange={(open) => {
+              if (!open) setSelectedModelName(null)
+            }}
+            model={selectedModel}
+            groupRatio={groupRatio || {}}
+            usableGroup={usableGroup || {}}
+            endpointMap={
+              (endpointMap as Record<
+                string,
+                { path?: string; method?: string }
+              >) || {}
+            }
+            autoGroups={autoGroups || []}
+            priceRate={priceRate ?? 1}
+            usdExchangeRate={usdExchangeRate ?? 1}
+            tokenUnit={tokenUnit}
+            showRechargePrice={showRechargePrice}
+          />
+        )}
+      </main>
+      <RankingsPreview
+        appearance='catalog'
+        onPricingFilterSelect={(filters) => {
+          applyFilters(filters)
+          const target = router.buildLocation({
+            to: '/pricing',
+            search: filters,
+          })
+          if (target.href === router.state.location.href) {
+            scrollToCatalogResults()
+          }
+        }}
+      />
+      <section className='mxy-catalog-cta-section'>
+        <div className='mxy-wrap'>
+          <div className='mxy-final-cta'>
+            <h2>{t('Looking for a particular model?')}</h2>
+            <p>
+              {t(
+                'Talk to our team about the models and integrations your business needs.'
+              )}
+            </p>
+            <div className='mxy-actions'>
+              <Button
+                className='mxy-button'
+                render={<Link to={authenticated ? '/dashboard' : '/sign-up'} />}
+              >
+                {authenticated
+                  ? t('Go to Dashboard')
+                  : t('Create a free account')}
+              </Button>
+              <Button
+                variant='outline'
+                className='mxy-button-outline'
+                render={<Link to='/' hash='business' />}
+              >
+                {t('Business cooperation')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <MarketingFooter variant='catalog' />
     </PublicLayout>
   )
 }

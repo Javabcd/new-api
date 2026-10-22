@@ -22,8 +22,10 @@ import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { ModelVendorIcon } from '@/features/marketing/model-vendor-icon'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
 import type { PricingModel, TokenUnit } from '../types'
@@ -31,6 +33,8 @@ import { ModelCard } from './model-card'
 import type { ModelPerfBadgeData } from './model-perf-badge'
 
 export interface ModelCardGridProps {
+  presentation?: 'default' | 'compact'
+  appearance?: 'default' | 'marketing'
   models: PricingModel[]
   onModelClick: (modelName: string) => void
   priceRate?: number
@@ -45,7 +49,8 @@ export const ModelCardGrid = memo(function ModelCardGrid(
 ) {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
-  const pageSize = DEFAULT_PRICING_PAGE_SIZE
+  const compact = props.presentation === 'compact'
+  const pageSize = compact ? 40 : DEFAULT_PRICING_PAGE_SIZE
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const totalPages = Math.max(1, Math.ceil(props.models.length / pageSize))
   const currentPage = Math.min(page, totalPages)
@@ -55,12 +60,13 @@ export const ModelCardGrid = memo(function ModelCardGrid(
     queryFn: async () => requireServerSuccess(await getPerfMetricsSummary(24)),
     staleTime: 60 * 1000,
     retry: false,
+    enabled: !compact,
   })
 
   const pagedModels = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return props.models.slice(start, start + pageSize)
-  }, [currentPage, pageSize, props.models])
+    const start = compact ? 0 : (currentPage - 1) * pageSize
+    return props.models.slice(start, currentPage * pageSize)
+  }, [compact, currentPage, pageSize, props.models])
 
   const perfMap = useMemo(() => {
     const map = new Map<string, ModelPerfBadgeData>()
@@ -80,11 +86,25 @@ export const ModelCardGrid = memo(function ModelCardGrid(
 
   return (
     <div className='flex flex-col gap-4 sm:gap-5'>
-      <div className='grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3'>
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3',
+          props.appearance === 'marketing' && 'mxy-model-grid'
+        )}
+      >
         {pagedModels.map((model) => (
           <ModelCard
+            presentation={props.presentation}
             key={model.id ?? model.model_name}
             model={model}
+            icon={
+              props.appearance === 'marketing' ? (
+                <ModelVendorIcon
+                  name={model.vendor_name}
+                  icon={model.icon || model.vendor_icon}
+                />
+              ) : undefined
+            }
             tokenUnit={tokenUnit}
             priceRate={props.priceRate}
             usdExchangeRate={props.usdExchangeRate}
@@ -96,7 +116,29 @@ export const ModelCardGrid = memo(function ModelCardGrid(
         ))}
       </div>
 
-      {totalPages > 1 && (
+      {compact && totalPages > 1 && (
+        <div className='mxy-catalog-more'>
+          <span className='sr-only' role='status'>
+            {t('Showing {{shown}} of {{total}} models', {
+              shown: pagedModels.length,
+              total: props.models.length,
+            })}
+          </span>
+          <Button
+            variant='outline'
+            className='mxy-button-outline'
+            disabled={currentPage >= totalPages}
+            onClick={() =>
+              setPage((current) => Math.min(totalPages, current + 1))
+            }
+          >
+            {currentPage >= totalPages
+              ? t('All models shown')
+              : t('Show more models')}
+          </Button>
+        </div>
+      )}
+      {!compact && totalPages > 1 && (
         <div className='text-muted-foreground flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm sm:flex-row'>
           <p className='text-muted-foreground'>
             {t('Page {{current}} of {{total}}', {

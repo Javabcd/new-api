@@ -23,9 +23,26 @@ import { VIEW_MODES, type ViewMode } from '../constants'
 
 export interface LoadingSkeletonProps {
   viewMode?: ViewMode
+  presentation?: 'default' | 'catalog'
 }
 
 export function LoadingSkeleton(props: LoadingSkeletonProps) {
+  if (props.presentation === 'catalog') {
+    const table = props.viewMode === VIEW_MODES.TABLE
+    return (
+      <div
+        aria-busy='true'
+        className={table ? 'flex flex-col gap-3' : 'mxy-model-grid grid'}
+      >
+        {Array.from({ length: table ? 10 : 12 }, (_, index) => (
+          <Skeleton
+            key={index}
+            className={table ? 'h-12 rounded-xl' : 'h-[74px] rounded-2xl'}
+          />
+        ))}
+      </div>
+    )
+  }
   return (
     <div aria-busy='true'>
       <div className='mx-auto mb-5 flex max-w-3xl flex-col items-center pt-5 sm:mb-10 sm:pt-10'>

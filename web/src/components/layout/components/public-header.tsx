@@ -17,7 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Settings2 } from 'lucide-react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -26,6 +34,19 @@ import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
@@ -46,6 +67,8 @@ type AuthPromptTarget = {
 }
 
 export interface PublicHeaderProps {
+  appearance?: 'default' | 'marketing'
+  marketingVariant?: 'default' | 'home' | 'catalog'
   navLinks?: TopNavLink[]
   mobileLinks?: TopNavLink[]
   navContent?: React.ReactNode
@@ -63,6 +86,13 @@ export interface PublicHeaderProps {
 }
 
 export function PublicHeader(props: PublicHeaderProps) {
+  const marketing = props.appearance === 'marketing'
+  const reference =
+    marketing &&
+    (props.marketingVariant === 'home' || props.marketingVariant === 'catalog')
+  const catalog = marketing && props.marketingVariant === 'catalog'
+  const LinksContainer = reference ? 'div' : Fragment
+  const ActionsContainer = reference ? 'div' : Fragment
   const {
     navLinks = defaultTopNavLinks,
     showThemeSwitch = true,
@@ -78,6 +108,9 @@ export function PublicHeader(props: PublicHeaderProps) {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [mobileTop, setMobileTop] = useState(0)
+  const headerRef = useRef<HTMLElement>(null)
   const [authPromptTarget, setAuthPromptTarget] =
     useState<AuthPromptTarget | null>(null)
   const [authPromptSecondsLeft, setAuthPromptSecondsLeft] =
@@ -97,7 +130,27 @@ export function PublicHeader(props: PublicHeaderProps) {
   const user = auth.user
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
-  const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const links = dynamicLinks.length > 0 || marketing ? dynamicLinks : navLinks
+
+  const navigationLinks = links.map((link) => {
+    let target = link.href
+    let hash: string | undefined
+    if (reference && link.href === '/about') {
+      target = '/'
+      hash = 'about'
+    } else if (catalog && link.href === '/rankings') {
+      target = '/pricing'
+      hash = 'rank'
+    }
+    return {
+      ...link,
+      target,
+      hash,
+      active:
+        pathname === target &&
+        (!reference || routerState.location.hash === (hash ?? '')),
+    }
+  })
 
   let logoContent: ReactNode = (
     <HeaderLogo
@@ -113,7 +166,12 @@ export function PublicHeader(props: PublicHeaderProps) {
   let authContent = (
     <Button
       size='sm'
-      className='h-8 rounded-lg px-3.5 text-xs font-medium'
+      variant={reference ? 'ghost' : 'default'}
+      className={
+        reference
+          ? 'mxy-home-login'
+          : 'h-8 rounded-lg px-3.5 text-xs font-medium'
+      }
       render={<Link to='/sign-in' />}
     >
       {t('Sign in')}
@@ -130,11 +188,12 @@ export function PublicHeader(props: PublicHeaderProps) {
   }, [])
 
   useEffect(() => {
+    if (marketing) return
     document.body.style.overflow = mobileOpen ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [mobileOpen])
+  }, [mobileOpen, marketing])
 
   useEffect(() => {
     if (!authPromptTarget) return
@@ -197,21 +256,54 @@ export function PublicHeader(props: PublicHeaderProps) {
     [t]
   )
 
+  const tools = (
+    <>
+      {showLanguageSwitcher && <LanguageSwitcher />}
+      {showThemeSwitch && <ThemeSwitch />}
+      {showNotifications && (
+        <NotificationPopover
+          open={notifications.popoverOpen}
+          onOpenChange={notifications.setPopoverOpen}
+          unreadCount={notifications.unreadCount}
+          activeTab={notifications.activeTab}
+          onTabChange={notifications.setActiveTab}
+          notice={notifications.notice}
+          announcements={notifications.announcements}
+          loading={notifications.loading}
+        />
+      )}
+    </>
+  )
+
   return (
     <>
-      <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
+      <header
+        ref={headerRef}
+        className={cn(
+          'pointer-events-none fixed inset-x-0 top-0 z-50',
+          marketing && 'mxy-header',
+          marketing && scrolled && 'mxy-header-scrolled',
+          props.className
+        )}
+      >
         <div
           className={cn(
             'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[52rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
+            marketing && 'mxy-header-inner',
+            !marketing &&
+              (scrolled
+                ? 'max-w-[52rem] px-3 pt-3'
+                : 'max-w-7xl px-4 pt-0 md:px-6')
           )}
         >
           <nav
             className={cn(
               'flex items-center justify-between gap-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2'
+              marketing && 'mxy-nav',
+              !marketing &&
+                (scrolled
+                  ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
+                  : 'h-16 px-2')
             )}
           >
             {/* Logo */}
@@ -220,17 +312,30 @@ export function PublicHeader(props: PublicHeaderProps) {
                 to={homeUrl}
                 className='group flex min-w-0 items-center gap-2.5'
               >
-                <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+                <div
+                  className={cn(
+                    'flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105',
+                    marketing && 'mxy-brand-mark'
+                  )}
+                >
                   {logoContent}
                 </div>
                 <span
-                  className='max-w-48 truncate text-sm font-semibold tracking-tight'
+                  className={cn(
+                    'max-w-48 truncate text-sm font-semibold tracking-tight',
+                    marketing && 'mxy-brand-name'
+                  )}
                   title={displaySiteName}
                 >
                   {loading ? (
                     <Skeleton className='h-4 w-16' />
                   ) : (
-                    displaySiteName
+                    <>
+                      {displaySiteName}
+                      {marketing && (
+                        <small className='mxy-brand-subtitle'>AIMXY</small>
+                      )}
+                    </>
                   )}
                 </span>
               </Link>
@@ -238,24 +343,339 @@ export function PublicHeader(props: PublicHeaderProps) {
             </div>
 
             {/* Desktop nav */}
-            <div className='hidden min-w-0 items-center gap-0.5 lg:flex'>
-              {links.map((link) => {
+            <div
+              className={cn(
+                'hidden min-w-0 items-center gap-0.5 lg:flex',
+                marketing && 'mxy-desktop-nav'
+              )}
+            >
+              <LinksContainer
+                {...(reference ? { className: 'mxy-home-links' } : {})}
+              >
+                {navigationLinks.map((link) => {
+                  const isActive = link.active
+                  if (link.external) {
+                    return (
+                      <a
+                        key={`${link.title}:${link.href}`}
+                        href={link.href}
+                        title={t(link.title)}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        aria-disabled={link.disabled}
+                        tabIndex={link.disabled ? -1 : undefined}
+                        onClick={(event) => handleNavLinkClick(event, link)}
+                        className={cn(
+                          'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                          link.disabled && 'pointer-events-none opacity-50'
+                        )}
+                      >
+                        {t(link.title)}
+                      </a>
+                    )
+                  }
+                  return (
+                    <Link
+                      key={`${link.title}:${link.href}`}
+                      to={link.target}
+                      hash={link.hash}
+                      activeOptions={
+                        reference
+                          ? { exact: true, includeHash: true }
+                          : undefined
+                      }
+                      title={t(link.title)}
+                      disabled={link.disabled}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={(event) => handleNavLinkClick(event, link)}
+                      className={cn(
+                        'min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                        isActive
+                          ? 'text-foreground'
+                          : 'text-muted-foreground hover:text-foreground',
+                        link.disabled && 'pointer-events-none opacity-50'
+                      )}
+                    >
+                      {t(link.title)}
+                    </Link>
+                  )
+                })}
+              </LinksContainer>
+
+              <ActionsContainer
+                {...(reference ? { className: 'mxy-home-nav-actions' } : {})}
+              >
+                {(showLanguageSwitcher ||
+                  showThemeSwitch ||
+                  showNotifications) &&
+                  (reference ? (
+                    <Popover open={toolsOpen} onOpenChange={setToolsOpen}>
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            aria-label={t('Page tools')}
+                          />
+                        }
+                      >
+                        <Settings2 aria-hidden='true' />
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align='end'
+                        className='mxy-theme mxy-reference mxy-home-tools'
+                      >
+                        <PopoverTitle>{t('Page tools')}</PopoverTitle>
+                        <div className='flex items-center gap-2'>{tools}</div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <>
+                      <div className='bg-border/40 mx-2 h-4 w-px' />
+                      {tools}
+                    </>
+                  ))}
+
+                {showAuthButtons && (
+                  <>
+                    {!reference && (
+                      <div className='bg-border/40 mx-1 h-4 w-px' />
+                    )}
+                    {authContent}
+                    {marketing && !isAuthenticated && !loading && (
+                      <Button
+                        size='sm'
+                        className={cn(
+                          'mxy-button',
+                          reference && 'mxy-button-small'
+                        )}
+                        render={<Link to='/sign-up' />}
+                      >
+                        {reference ? t('Create a free account') : t('Sign up')}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </ActionsContainer>
+            </div>
+
+            {/* Mobile: compact actions + hamburger */}
+            <div
+              className={cn(
+                'flex shrink-0 items-center gap-2 lg:hidden',
+                marketing && 'mxy-mobile-nav'
+              )}
+            >
+              {showThemeSwitch && !reference && <ThemeSwitch />}
+              {reference && showAuthButtons && !isAuthenticated && (
+                <>
+                  {authContent}
+                  {!loading && (
+                    <Button
+                      className='mxy-button mxy-button-small mxy-home-signup'
+                      render={<Link to='/sign-up' />}
+                    >
+                      {t('Create a free account')}
+                    </Button>
+                  )}
+                </>
+              )}
+              {showAuthButtons && !loading && isAuthenticated && (
+                <ProfileDropdown />
+              )}
+              {marketing ? (
+                <Sheet
+                  open={mobileOpen}
+                  onOpenChange={(open) => {
+                    if (reference && open) {
+                      setMobileTop(
+                        headerRef.current?.getBoundingClientRect().bottom ?? 0
+                      )
+                      setToolsOpen(false)
+                    }
+                    setMobileOpen(open)
+                  }}
+                >
+                  <SheetTrigger
+                    render={
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        aria-label={t('Toggle navigation menu')}
+                        className={reference ? 'mxy-home-burger' : undefined}
+                      />
+                    }
+                  >
+                    <span aria-hidden='true'>☰</span>
+                  </SheetTrigger>
+                  <SheetContent
+                    side={reference ? 'top' : 'right'}
+                    className={cn(
+                      'mxy-theme mxy-navigation-sheet',
+                      reference && 'mxy-reference mxy-home-menu'
+                    )}
+                    style={
+                      reference
+                        ? {
+                            top: mobileTop,
+                            maxHeight: `calc(100dvh - ${mobileTop}px)`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <SheetHeader>
+                      <SheetTitle>{displaySiteName}</SheetTitle>
+                    </SheetHeader>
+                    <nav
+                      aria-label={t('Navigation')}
+                      className='flex flex-col gap-2 px-4'
+                    >
+                      {navigationLinks.map((link) =>
+                        link.external ? (
+                          <a
+                            key={link.href}
+                            href={link.href}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            onClick={(event) =>
+                              handleNavLinkClick(event, link, true)
+                            }
+                            aria-disabled={link.disabled}
+                            tabIndex={link.disabled ? -1 : undefined}
+                            className='mxy-mobile-link'
+                          >
+                            {t(link.title)}
+                          </a>
+                        ) : (
+                          <Link
+                            key={link.href}
+                            to={link.target}
+                            hash={link.hash}
+                            activeOptions={
+                              reference
+                                ? { exact: true, includeHash: true }
+                                : undefined
+                            }
+                            disabled={link.disabled}
+                            aria-current={link.active ? 'page' : undefined}
+                            onClick={(event) =>
+                              handleNavLinkClick(event, link, true)
+                            }
+                            className='mxy-mobile-link'
+                          >
+                            {t(link.title)}
+                          </Link>
+                        )
+                      )}
+                    </nav>
+                    <div className='mt-auto flex flex-wrap items-center gap-2 p-4'>
+                      {reference
+                        ? tools
+                        : showLanguageSwitcher && <LanguageSwitcher />}
+                      {showAuthButtons && (
+                        <Button
+                          render={
+                            <Link
+                              to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                              onClick={() => setMobileOpen(false)}
+                            />
+                          }
+                        >
+                          {isAuthenticated
+                            ? t('Go to Dashboard')
+                            : t('Sign in')}
+                        </Button>
+                      )}
+                      {showAuthButtons && !isAuthenticated && (
+                        <Button
+                          variant='outline'
+                          render={
+                            <Link
+                              to='/sign-up'
+                              onClick={() => setMobileOpen(false)}
+                            />
+                          }
+                        >
+                          {t('Sign up')}
+                        </Button>
+                      )}
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              ) : (
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  className='size-9'
+                  onClick={() => setMobileOpen((v) => !v)}
+                  aria-label={t('Toggle navigation menu')}
+                >
+                  <div className='relative size-4'>
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
+                        mobileOpen ? 'top-[7px] rotate-45' : 'top-[3px]'
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 top-[7px] block h-[1.5px] rounded-full bg-current transition-all duration-300',
+                        mobileOpen ? 'scale-x-0 opacity-0' : 'opacity-100'
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
+                        mobileOpen ? 'top-[7px] -rotate-45' : 'top-[11px]'
+                      )}
+                    />
+                  </div>
+                </Button>
+              )}
+            </div>
+          </nav>
+        </div>
+      </header>
+
+      {/* Mobile full-screen overlay */}
+      {!marketing && (
+        <div
+          className={cn(
+            'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] lg:pointer-events-none lg:hidden',
+            mobileOpen
+              ? 'pointer-events-auto opacity-100'
+              : 'pointer-events-none opacity-0'
+          )}
+        >
+          <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
+            <nav className='flex flex-col gap-1'>
+              {links.map((link, i) => {
                 const isActive = pathname === link.href
+                const linkClassName = cn(
+                  'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  mobileOpen
+                    ? 'translate-y-0 opacity-100'
+                    : 'translate-y-4 opacity-0',
+                  isActive ? 'text-foreground' : 'text-muted-foreground',
+                  link.disabled && 'pointer-events-none opacity-50'
+                )
+                const transitionStyle = {
+                  transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
+                }
                 if (link.external) {
                   return (
                     <a
                       key={`${link.title}:${link.href}`}
                       href={link.href}
-                      title={t(link.title)}
                       target='_blank'
                       rel='noopener noreferrer'
                       aria-disabled={link.disabled}
                       tabIndex={link.disabled ? -1 : undefined}
-                      onClick={(event) => handleNavLinkClick(event, link)}
-                      className={cn(
-                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                        link.disabled && 'pointer-events-none opacity-50'
-                      )}
+                      onClick={(event) => handleNavLinkClick(event, link, true)}
+                      className={linkClassName}
+                      style={transitionStyle}
                     >
                       {t(link.title)}
                     </a>
@@ -265,168 +685,39 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Link
                     key={`${link.title}:${link.href}`}
                     to={link.href}
-                    title={t(link.title)}
                     disabled={link.disabled}
-                    onClick={(event) => handleNavLinkClick(event, link)}
-                    className={cn(
-                      'min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                      link.disabled && 'pointer-events-none opacity-50'
-                    )}
-                  >
-                    {t(link.title)}
-                  </Link>
-                )
-              })}
-
-              {(showLanguageSwitcher ||
-                showThemeSwitch ||
-                showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
-              )}
-
-              {showLanguageSwitcher && <LanguageSwitcher />}
-              {showThemeSwitch && <ThemeSwitch />}
-              {showNotifications && (
-                <NotificationPopover
-                  open={notifications.popoverOpen}
-                  onOpenChange={notifications.setPopoverOpen}
-                  unreadCount={notifications.unreadCount}
-                  activeTab={notifications.activeTab}
-                  onTabChange={notifications.setActiveTab}
-                  notice={notifications.notice}
-                  announcements={notifications.announcements}
-                  loading={notifications.loading}
-                />
-              )}
-
-              {showAuthButtons && (
-                <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {authContent}
-                </>
-              )}
-            </div>
-
-            {/* Mobile: compact actions + hamburger */}
-            <div className='flex shrink-0 items-center gap-2 lg:hidden'>
-              {showThemeSwitch && <ThemeSwitch />}
-              {showAuthButtons && !loading && isAuthenticated && (
-                <ProfileDropdown />
-              )}
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='size-9'
-                onClick={() => setMobileOpen((v) => !v)}
-                aria-label={t('Toggle navigation menu')}
-              >
-                <div className='relative size-4'>
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] rotate-45' : 'top-[3px]'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 top-[7px] block h-[1.5px] rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'scale-x-0 opacity-0' : 'opacity-100'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] -rotate-45' : 'top-[11px]'
-                    )}
-                  />
-                </div>
-              </Button>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* Mobile full-screen overlay */}
-      <div
-        className={cn(
-          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] lg:pointer-events-none lg:hidden',
-          mobileOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
-        )}
-      >
-        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
-          <nav className='flex flex-col gap-1'>
-            {links.map((link, i) => {
-              const isActive = pathname === link.href
-              const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                mobileOpen
-                  ? 'translate-y-0 opacity-100'
-                  : 'translate-y-4 opacity-0',
-                isActive ? 'text-foreground' : 'text-muted-foreground',
-                link.disabled && 'pointer-events-none opacity-50'
-              )
-              const transitionStyle = {
-                transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
-              }
-              if (link.external) {
-                return (
-                  <a
-                    key={`${link.title}:${link.href}`}
-                    href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    aria-disabled={link.disabled}
-                    tabIndex={link.disabled ? -1 : undefined}
                     onClick={(event) => handleNavLinkClick(event, link, true)}
                     className={linkClassName}
                     style={transitionStyle}
                   >
                     {t(link.title)}
-                  </a>
+                  </Link>
                 )
-              }
-              return (
-                <Link
-                  key={`${link.title}:${link.href}`}
-                  to={link.href}
-                  disabled={link.disabled}
-                  onClick={(event) => handleNavLinkClick(event, link, true)}
-                  className={linkClassName}
-                  style={transitionStyle}
-                >
-                  {t(link.title)}
-                </Link>
-              )
-            })}
-          </nav>
+              })}
+            </nav>
 
-          <div
-            className={cn(
-              'flex flex-col gap-3 transition-all duration-500',
-              mobileOpen
-                ? 'translate-y-0 opacity-100'
-                : 'translate-y-4 opacity-0'
-            )}
-            style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
-          >
-            {showAuthButtons && (
-              <Link
-                to={isAuthenticated ? '/dashboard' : '/sign-in'}
-                onClick={() => setMobileOpen(false)}
-                className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
-              >
-                {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
-              </Link>
-            )}
+            <div
+              className={cn(
+                'flex flex-col gap-3 transition-all duration-500',
+                mobileOpen
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-4 opacity-0'
+              )}
+              style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
+            >
+              {showAuthButtons && (
+                <Link
+                  to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                  onClick={() => setMobileOpen(false)}
+                  className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
+                >
+                  {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
+                </Link>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <Dialog
         open={!!authPromptTarget}
