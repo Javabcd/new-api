@@ -25,9 +25,22 @@ export function useApiBaseUrl(): string {
     status?.serverAddress ??
     status?.data?.server_address ??
     status?.data?.serverAddress
-  const serviceUrl =
-    typeof address === 'string' && address
-      ? address.replace(/\/+$/, '')
-      : window.location.origin
-  return `${serviceUrl}/v1`
+  const currentBaseUrl = `${window.location.origin}/v1`
+  if (typeof address !== 'string' || !address.trim()) return currentBaseUrl
+
+  const serviceUrl = address.trim().replace(/\/+$/, '')
+  try {
+    const url = new URL(serviceUrl)
+    const hostname = url.hostname.replace(/\.$/, '')
+    const localAddress =
+      ['localhost', '0.0.0.0', '[::1]', '[::]'].includes(hostname) ||
+      hostname.endsWith('.localhost') ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname)
+    if (!['http:', 'https:'].includes(url.protocol) || localAddress) {
+      return currentBaseUrl
+    }
+    return `${serviceUrl}/v1`
+  } catch {
+    return currentBaseUrl
+  }
 }

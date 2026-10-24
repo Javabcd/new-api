@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+// @vitest-environment-options {"url":"https://portal.example.com:8443/?aff=campaign#getting-started"}
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -107,6 +108,51 @@ it.each([
     baseUrl: 'https://gateway.example.com/v1',
   },
   {
+    name: 'default localhost service address',
+    status: { server_address: 'http://localhost:3000' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'IPv4 loopback service address',
+    status: { server_address: 'http://127.0.0.1:3000' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'IPv6 loopback service address',
+    status: { server_address: 'http://[::1]:3000' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'wildcard listening address',
+    status: { server_address: 'http://0.0.0.0:3000' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'whitespace configuration',
+    status: { server_address: '   ' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'malformed service address',
+    status: { server_address: 'not a service URL' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'unsupported service protocol',
+    status: { server_address: 'ftp://gateway.example.com' },
+    baseUrl: `${window.location.origin}/v1`,
+  },
+  {
+    name: 'configured domain containing localhost',
+    status: { server_address: 'https://localhost.example.com/proxy/' },
+    baseUrl: 'https://localhost.example.com/proxy/v1',
+  },
+  {
+    name: 'configured service address with surrounding whitespace',
+    status: { server_address: '  https://gateway.example.com/proxy/  ' },
+    baseUrl: 'https://gateway.example.com/proxy/v1',
+  },
+  {
     name: 'missing configuration',
     status: {},
     baseUrl: `${window.location.origin}/v1`,
@@ -142,31 +188,41 @@ it.each([
   }
 )
 
-it('updates the displayed and copied address when status arrives without resetting the selected language', async () => {
-  const user = userEvent.setup()
-  await renderQuickStart({})
-  await user.click(screen.getByRole('tab', { name: 'Python' }))
-  const panel = within(screen.getByRole('tabpanel'))
-  expect(panel.getByText(/from openai import/)).toHaveTextContent(
-    `${window.location.origin}/v1`
-  )
-
-  act(() =>
-    client.setQueryData(STATUS_QUERY_KEY, {
-      server_address: 'https://gateway.example.com/proxy/',
-    })
-  )
-
-  await waitFor(() =>
+it.each([
+  {
+    name: 'configured domain',
+    address: 'https://gateway.example.com/proxy/',
+    baseUrl: 'https://gateway.example.com/proxy/v1',
+  },
+  {
+    name: 'default localhost address',
+    address: 'http://localhost:3000',
+    baseUrl: `${window.location.origin}/v1`,
+  },
+])(
+  'uses the $name when status arrives without resetting the selected language',
+  async ({ address, baseUrl }) => {
+    const user = userEvent.setup()
+    await renderQuickStart({})
+    await user.click(screen.getByRole('tab', { name: 'Python' }))
+    const panel = within(screen.getByRole('tabpanel'))
     expect(panel.getByText(/from openai import/)).toHaveTextContent(
-      'https://gateway.example.com/proxy/v1'
+      `${window.location.origin}/v1`
     )
-  )
-  expect(
-    screen.getByRole('tab', { name: 'Python', selected: true })
-  ).toBeVisible()
-  await user.click(panel.getByRole('button', { name: 'Copy code' }))
-  expect(await navigator.clipboard.readText()).toContain(
-    'https://gateway.example.com/proxy/v1'
-  )
-})
+
+    act(() =>
+      client.setQueryData(STATUS_QUERY_KEY, {
+        server_address: address,
+      })
+    )
+
+    await waitFor(() =>
+      expect(panel.getByText(/from openai import/)).toHaveTextContent(baseUrl)
+    )
+    expect(
+      screen.getByRole('tab', { name: 'Python', selected: true })
+    ).toBeVisible()
+    await user.click(panel.getByRole('button', { name: 'Copy code' }))
+    expect(await navigator.clipboard.readText()).toContain(baseUrl)
+  }
+)
