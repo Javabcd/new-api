@@ -38,6 +38,133 @@ func TestCTYunResponsesProtocol(t *testing.T) {
 	})
 }
 
+func TestCTYunResponsesVideoInput(t *testing.T) {
+	plugin := newCTYunPlugin(t)
+	videoURL := "https://example.com/ref.mp4?signature=a%2Bb&expires=123"
+	video := map[string]any{"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": videoURL}}
+	assetVideo := map[string]any{"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": "asset://asset-video"}}
+	metadataContent := []any{
+		map[string]any{"type": "text", "text": "existing text"},
+		map[string]any{"type": "image_url", "role": "first_frame", "image_url": map[string]any{"url": "asset://asset-frame"}},
+		map[string]any{"type": "audio_url", "role": "reference_audio", "audio_url": map[string]any{"url": "https://example.com/audio.mp3"}},
+		map[string]any{"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": "asset://existing-video"}},
+	}
+	for _, tc := range []struct {
+		name        string
+		input       []any
+		metadata    map[string]any
+		wantContent []any
+	}{
+		{
+			name:        "input_video string",
+			input:       []any{map[string]any{"type": "input_video", "video_url": " " + videoURL + " "}},
+			wantContent: []any{video},
+		},
+		{
+			name:        "input_video object",
+			input:       []any{map[string]any{"type": "input_video", "video_url": map[string]any{"url": "asset://asset-video"}}},
+			wantContent: []any{assetVideo},
+		},
+		{
+			name:        "video_url string",
+			input:       []any{map[string]any{"type": "video_url", "video_url": videoURL}},
+			wantContent: []any{video},
+		},
+		{
+			name:        "video_url object",
+			input:       []any{video},
+			wantContent: []any{video},
+		},
+		{
+			name:        "message content object",
+			input:       []any{map[string]any{"role": "user", "content": map[string]any{"type": "input_video", "video_url": "asset://asset-video"}}},
+			wantContent: []any{assetVideo},
+		},
+		{
+			name: "mixed media and metadata",
+			input: []any{
+				map[string]any{"role": "user", "content": []any{
+					map[string]any{"type": "input_video", "video_url": "asset://asset-video"},
+					map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"},
+					map[string]any{"type": "input_text", "text": "first prompt"},
+				}},
+				video,
+				map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "second prompt"}}},
+			},
+			metadata: map[string]any{"content": metadataContent, "watermark": false, "future_option": true},
+			wantContent: append(append([]any{}, metadataContent...), assetVideo, video,
+				map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": "https://example.com/image.png"}},
+				map[string]any{"type": "text", "text": "first prompt\nsecond prompt"}),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := map[string]any{"model": ctyunModel, "input": tc.input, "seconds": 11, "resolution": "720p"}
+			if tc.metadata != nil {
+				request["metadata"] = tc.metadata
+			}
+			original, err := common.Marshal(request)
+			require.NoError(t, err)
+			want := map[string]any{"model": ctyunModel, "duration": 11, "resolution": "720p"}
+			maps.Copy(want, tc.metadata)
+			want["content"] = tc.wantContent
+			// Channel selection and execution decode the same client body separately.
+			for range 2 {
+				value, err := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_responses", "decodeRequest"}, map[string]any{
+					"model": ctyunModel, "body": map[string]any{"kind": "json", "value": request},
+				})
+				require.NoError(t, err)
+				intent := alibabaObject(t, value)
+				assert.Equal(t, "image_to_video", intent["action"])
+				value, err = plugin.Engine.Call(t.Context(), "buildSubmitRequest", map[string]any{
+					"requestBody": intent["requestBody"], "upstreamModel": ctyunModel, "baseUrl": "https://ai.ctaigw.cn/v1",
+				})
+				require.NoError(t, err)
+				assert.Equal(t, alibabaObject(t, want), alibabaObject(t, value)["body"])
+			}
+			after, err := common.Marshal(request)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(original), string(after))
+		})
+	}
+
+	for _, tc := range []struct {
+		name      string
+		part      map[string]any
+		metadata  any
+		wantError string
+	}{
+		{name: "missing URL", part: map[string]any{"type": "input_video"}},
+		{name: "null URL", part: map[string]any{"type": "input_video", "video_url": nil}},
+		{name: "empty URL", part: map[string]any{"type": "video_url", "video_url": ""}},
+		{name: "blank URL", part: map[string]any{"type": "input_video", "video_url": " \t\n"}},
+		{name: "number URL", part: map[string]any{"type": "input_video", "video_url": 42}},
+		{name: "array URL", part: map[string]any{"type": "video_url", "video_url": []any{videoURL}}},
+		{name: "object without URL", part: map[string]any{"type": "input_video", "video_url": map[string]any{}}},
+		{name: "non-string object URL", part: map[string]any{"type": "video_url", "video_url": map[string]any{"url": false}}},
+		{name: "invalid metadata", part: video, metadata: "invalid", wantError: "metadata must be an object"},
+		{name: "invalid content", part: video, metadata: map[string]any{"content": "invalid"}, wantError: "content must be an array"},
+		{name: "null content", part: video, metadata: map[string]any{"content": nil}, wantError: "content must be an array"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := map[string]any{
+				"model": ctyunModel, "seconds": 11, "resolution": "720p",
+				"input": []any{map[string]any{"type": "input_text", "text": "a cat"}, tc.part},
+			}
+			if tc.metadata != nil {
+				request["metadata"] = tc.metadata
+			}
+			_, err := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_responses", "decodeRequest"}, map[string]any{
+				"model": ctyunModel, "body": map[string]any{"kind": "json", "value": request},
+			})
+			wantError := tc.wantError
+			if wantError == "" {
+				wantError = "video references must be non-empty URLs"
+			}
+			require.ErrorContains(t, err, wantError)
+		})
+	}
+}
+
 func TestCTYunSubmission(t *testing.T) {
 	plugin := newCTYunPlugin(t)
 	assert.Empty(t, plugin.Meta.ChannelTypes)

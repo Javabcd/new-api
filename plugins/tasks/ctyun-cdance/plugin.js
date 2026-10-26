@@ -244,7 +244,8 @@ export function buildContentRequest(ctx) {
 
 function responsesInput(req) {
   const texts = [],
-    images = [];
+    images = [],
+    videos = [];
   const input = req.input;
   if (typeof input === "string") texts.push(input);
   else if (Array.isArray(input)) {
@@ -267,6 +268,13 @@ function responsesInput(req) {
           if (image && typeof image === "object") image = image.url;
           if (trimmed(image)) images.push(trimmed(image));
         }
+        if (["input_video", "video_url"].includes(part.type)) {
+          let video = part.video_url;
+          if (video && typeof video === "object" && !Array.isArray(video)) video = video.url;
+          const url = trimmed(video);
+          if (!url) throw new Error("video references must be non-empty URLs");
+          videos.push({ type: "video_url", video_url: { url: url }, role: "reference_video" });
+        }
       }
     }
   }
@@ -277,6 +285,7 @@ function responsesInput(req) {
       })
       .join("\n"),
     images: images,
+    videos: videos,
   };
 }
 
@@ -297,6 +306,11 @@ export const protocols = {
       if (req.images !== undefined && !Array.isArray(req.images)) throw new Error("images must be an array");
       const input = responsesInput(req);
       const requestBody = Object.assign({}, req, { images: (req.images || []).concat(input.images) });
+      if (input.videos.length) {
+        const metadata = req.metadata === undefined ? {} : objectValue(req.metadata, "metadata");
+        if (metadata.content !== undefined && !Array.isArray(metadata.content)) throw new Error("content must be an array");
+        requestBody.metadata = Object.assign({}, metadata, { content: Array.from(metadata.content || []).concat(input.videos) });
+      }
       if (input.prompt) requestBody.prompt = input.prompt;
       return videoIntent(ctx, requestBody);
     },
