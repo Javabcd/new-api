@@ -34,7 +34,7 @@ func TestCTYunResponsesProtocol(t *testing.T) {
 		pluginKey: "ctyun-cdance", model: ctyunModel,
 		requestBody: map[string]any{"model": ctyunModel, "input": "a running fox", "seconds": 11, "resolution": "720p"},
 		wantAction:  "text_to_video", wantRequest: map[string]any{"model": ctyunModel, "prompt": "a running fox", "seconds": float64(11)},
-		wantUsageKeys: []string{"tokens", "resolution"}, wantVendorName: "ctyun-cdance",
+		wantUsageKeys: []string{"tokens", "resolution", "video_input"}, wantVendorName: "ctyun-cdance",
 	})
 }
 
@@ -120,6 +120,11 @@ func TestCTYunResponsesVideoInput(t *testing.T) {
 				})
 				require.NoError(t, err)
 				assert.Equal(t, alibabaObject(t, want), alibabaObject(t, value)["body"])
+				value, err = plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{
+					"requestBody": intent["requestBody"], "upstreamModel": ctyunModel,
+				})
+				require.NoError(t, err)
+				assert.Equal(t, map[string]any{"tokens": float64(237600), "resolution": "720p", "video_input": "video"}, alibabaObject(t, value))
 			}
 			after, err := common.Marshal(request)
 			require.NoError(t, err)
@@ -235,6 +240,7 @@ func TestCTYunSubmission(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, float64(237600), facts["tokens"])
 			assert.Equal(t, "720p", facts["resolution"])
+			assert.Equal(t, "video", facts["video_input"])
 		})
 	}
 
@@ -267,6 +273,42 @@ func TestCTYunSubmission(t *testing.T) {
 	value, err = plugin.Engine.Call(t.Context(), "parseSubmitResponse", ctx, map[string]any{"body": map[string]any{"id": "cgt-test", "extra": true}})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"taskId": "cgt-test", "taskData": map[string]any{"id": "cgt-test", "extra": true}}, alibabaObject(t, value))
+}
+
+func TestCTYunUsageFacts(t *testing.T) {
+	plugin := newCTYunPlugin(t)
+	for _, tc := range []struct {
+		name          string
+		content       []any
+		reportedInput string
+		wantInput     string
+	}{
+		{name: "text", wantInput: "none"},
+		{name: "image", content: []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "asset://image"}, "role": "reference_image"}}, wantInput: "none"},
+		{name: "audio", content: []any{map[string]any{"type": "audio_url", "audio_url": map[string]any{"url": "https://example.com/audio.mp3"}, "role": "reference_audio"}}, wantInput: "none"},
+		{name: "video URL overrides claimed absence", content: []any{map[string]any{"type": "video_url", "video_url": map[string]any{"url": "https://example.com/video.mp4"}, "role": "reference_video"}}, reportedInput: "none", wantInput: "video"},
+		{name: "video asset", content: []any{map[string]any{"type": "video_url", "video_url": map[string]any{"url": "asset://video"}, "role": "reference_video"}}, wantInput: "video"},
+		{name: "claimed presence without video", reportedInput: "video", wantInput: "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metadata := map[string]any{}
+			if tc.content != nil {
+				metadata["content"] = tc.content
+			}
+			request := map[string]any{"model": ctyunModel, "prompt": "a cat", "seconds": 11, "resolution": "720p", "metadata": metadata}
+			if tc.reportedInput != "" {
+				request["video_input"] = tc.reportedInput
+				metadata["video_input"] = tc.reportedInput
+			}
+			ctx := map[string]any{"requestBody": request, "upstreamModel": ctyunModel, "baseUrl": "https://ai.ctaigw.cn/v1"}
+			value, err := plugin.Engine.Call(t.Context(), "extractUsage", ctx)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"tokens": float64(237600), "resolution": "720p", "video_input": tc.wantInput}, alibabaObject(t, value))
+			value, err = plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
+			require.NoError(t, err)
+			assert.NotContains(t, alibabaObject(t, value)["body"], "video_input")
+		})
+	}
 }
 
 func TestCTYunValidation(t *testing.T) {
@@ -302,6 +344,29 @@ func TestCTYunValidation(t *testing.T) {
 			require.NoError(t, err)
 			body := alibabaObject(t, value)["body"].(map[string]any)
 			assert.Contains(t, []string{"720p", "4k"}, body["resolution"])
+		})
+	}
+	for _, tc := range []struct {
+		name      string
+		reference any
+		wantError string
+	}{
+		{"missing video object", nil, "video_url must be an object"},
+		{"string video object", "https://example.com/video.mp4", "video_url must be an object"},
+		{"array video object", []any{"https://example.com/video.mp4"}, "video_url must be an object"},
+		{"missing video URL", map[string]any{}, "video references must be non-empty URLs"},
+		{"blank video URL", map[string]any{"url": " \t"}, "video references must be non-empty URLs"},
+		{"numeric video URL", map[string]any{"url": 42}, "video references must be non-empty URLs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", map[string]any{
+				"upstreamModel": ctyunModel,
+				"requestBody": map[string]any{
+					"seconds": 11, "resolution": "720p", "prompt": "a cat",
+					"metadata": map[string]any{"content": []any{map[string]any{"type": "video_url", "video_url": tc.reference}}},
+				},
+			})
+			require.ErrorContains(t, err, tc.wantError)
 		})
 	}
 	for _, fields := range []map[string]any{

@@ -29,8 +29,16 @@ export const meta = {
   usageSchema: {
     tokens: { type: "number", unit: "token", description: { en: "Video generation unit price", zh: "视频生成单价" } },
     resolution: { enum: RESOLUTIONS, description: { en: "Output video resolution", zh: "输出视频分辨率" } },
+    video_input: {
+      enum: ["none", "video"],
+      description: { en: "Reference video input", zh: "参考视频输入" },
+      enumLabels: { none: { en: "No reference video", zh: "无参考视频" }, video: { en: "With reference video", zh: "有参考视频" } },
+    },
   },
-  usageExamples: [{ label: "720p · 11s", facts: { tokens: 238500, resolution: "720p" } }],
+  usageExamples: [
+    { label: "720p · 11s", facts: { tokens: 238500, resolution: "720p", video_input: "none" } },
+    { label: "720p · 11s · video", facts: { tokens: 238500, resolution: "720p", video_input: "video" } },
+  ],
   routes: [
     { method: "POST", path: "/ctyun/v1/contents/generations/tasks", type: "submit", decode: "createTask", render: "taskCreated" },
     { method: "GET", path: "/ctyun/v1/contents/generations/tasks/:task_id", type: "query", render: "taskStatus" },
@@ -101,6 +109,7 @@ function videoRequest(ctx, validateModel) {
   body.duration = duration;
   body.resolution = resolution;
   delete body.seconds;
+  delete body.video_input;
   if (body.content !== undefined && !Array.isArray(body.content)) throw new Error("content must be an array");
   // Copy the array before appending: hooks can receive host-backed JSON values.
   const content = Array.isArray(body.content) ? Array.from(body.content) : [];
@@ -116,6 +125,11 @@ function videoRequest(ctx, validateModel) {
   if (req.prompt !== undefined && typeof req.prompt !== "string") throw new Error("prompt must be a string");
   if (trimmed(req.prompt)) content.push({ type: "text", text: req.prompt });
   if (!content.length) throw new Error("prompt or content is required");
+  for (const item of content) {
+    if (!item || item.type !== "video_url") continue;
+    const reference = objectValue(item.video_url, "video_url");
+    if (!trimmed(reference.url)) throw new Error("video references must be non-empty URLs");
+  }
   body.content = content;
   return body;
 }
@@ -177,7 +191,9 @@ export function extractUsage(ctx) {
   // CTYun final billing uses upstream usage tokens;
   // this value is reservation estimation only (Doubao's 24 fps formula).
   const tokens = (body.duration * dimensions[0] * dimensions[1] * 24) / 1024;
-  return { tokens: tokens, resolution: body.resolution };
+  // The CTYun guide groups token usage by resolution and video input presence.
+  const videoInput = body.content.some((item) => item && item.type === "video_url") ? "video" : "none";
+  return { tokens: tokens, resolution: body.resolution, video_input: videoInput };
 }
 
 export function buildQueryRequest(ctx) {
@@ -223,6 +239,7 @@ export function extractUsageOnComplete(ctx, result, body) {
       break;
     }
   }
+  // Preserve the submitted video_input fact; content.video_url is generated output.
   return facts;
 }
 

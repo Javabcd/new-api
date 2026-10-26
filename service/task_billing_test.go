@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -1694,61 +1695,92 @@ func TestSettle_CTYunMeasuredTokensReplaceReservation(t *testing.T) {
 	require.NoError(t, err)
 	plugin, err := jsplugin.NewRegistry().Register(string(source), jsplugin.Options{})
 	require.NoError(t, err)
-	value, err := plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{
-		"upstreamModel": "cdance2.5-0807",
-		"requestBody":   map[string]any{"seconds": 11, "resolution": "720p", "prompt": "a cat"},
-	})
-	require.NoError(t, err)
-	encoded, err := common.Marshal(value)
-	require.NoError(t, err)
-	var reserved map[string]any
-	require.NoError(t, common.Unmarshal(encoded, &reserved))
-	require.Equal(t, float64(237600), reserved["tokens"])
+	// Synthetic USD prices exercise the documented usage categories, not CTYun rates.
+	const expression = `u("resolution") == "720p" && u("video_input") == "video" ? tier("720p_video", u("tokens") * 2 / 1000000) : tier("720p_none", u("tokens") * 1 / 1000000)`
+	const legacyExpression = `tier("720p", u("tokens") * 1 / 1000000)`
+	schema, _ := plugin.Meta.UsageForModel("cdance2.5-0807")
+	require.NoError(t, billing_setting.SmokeTestTaskExpr(expression, schema))
+	require.NoError(t, billing_setting.SmokeTestTaskExpr(legacyExpression, schema))
 	for _, tc := range []struct {
-		name  string
-		usage map[string]any
-		want  int
+		name       string
+		videoInput string
+		usage      map[string]any
+		wantTokens int
+		unitPrice  int
+		wantTier   string
+		expression string
 	}{
-		{"completion wins", map[string]any{"completion_tokens": 238500, "total_tokens": 999999}, 238500},
-		{"fallback total", map[string]any{"total_tokens": 200000}, 200000},
-		{"measured zero", map[string]any{"completion_tokens": 0, "total_tokens": 999999}, 0},
-		{"missing preserves reservation", map[string]any{}, 237600},
+		{"completion wins", "none", map[string]any{"completion_tokens": 238500, "total_tokens": 999999}, 238500, 1, "720p_none", expression},
+		{"reference video completion", "video", map[string]any{"completion_tokens": 238500, "total_tokens": 999999}, 238500, 2, "720p_video", expression},
+		{"fallback total", "video", map[string]any{"total_tokens": 200000}, 200000, 2, "720p_video", expression},
+		{"measured zero", "video", map[string]any{"completion_tokens": 0, "total_tokens": 999999}, 0, 2, "720p_video", expression},
+		{"missing preserves reservation", "video", map[string]any{}, 237600, 2, "720p_video", expression},
+		{"legacy expression", "video", map[string]any{"completion_tokens": 238500}, 238500, 1, "720p", legacyExpression},
+		{"legacy snapshot", "", map[string]any{"completion_tokens": 238500}, 238500, 1, "720p", legacyExpression},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			truncate(t)
-			const userID, initialQuota, preConsumed = 37, 1000000, 237600
+			const userID, initialQuota = 37, 1000000
+			preConsumed := 237600 * tc.unitPrice
 			seedUser(t, userID, initialQuota)
-			value, err := plugin.Engine.Call(t.Context(), "extractUsageOnComplete", map[string]any{}, map[string]any{}, map[string]any{
-				"status": "succeeded", "usage": tc.usage, "resolution": "720p",
-			})
+			request := map[string]any{"seconds": 11, "resolution": "720p", "prompt": "a cat"}
+			if tc.videoInput == "video" {
+				request["metadata"] = map[string]any{"content": []any{map[string]any{
+					"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": "asset://reference-video"},
+				}}}
+			}
+			value, err := plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{"upstreamModel": "cdance2.5-0807", "requestBody": request})
 			require.NoError(t, err)
 			encoded, err := common.Marshal(value)
 			require.NoError(t, err)
+			var reserved map[string]any
+			require.NoError(t, common.Unmarshal(encoded, &reserved))
+			require.Equal(t, float64(237600), reserved["tokens"])
+			if tc.videoInput == "" {
+				// Tasks created before this field existed retain their original snapshot.
+				delete(reserved, "video_input")
+			} else {
+				assert.Equal(t, tc.videoInput, reserved["video_input"])
+			}
+
+			value, err = plugin.Engine.Call(t.Context(), "extractUsageOnComplete", map[string]any{}, map[string]any{}, map[string]any{
+				"status": "succeeded", "usage": tc.usage, "resolution": "720p", "content": map[string]any{"video_url": "https://example.com/generated.mp4"},
+			})
+			require.NoError(t, err)
+			encoded, err = common.Marshal(value)
+			require.NoError(t, err)
 			var actual map[string]any
 			require.NoError(t, common.Unmarshal(encoded, &actual))
+			assert.NotContains(t, actual, "video_input")
 			task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
-			// A synthetic $1 / million tokens and quota unit make each token
-			// one quota unit; these are test prices, never vendor defaults.
-			const expression = `tier("720p", u("tokens") * 1 / 1000000)`
 			task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
-				ExprString: expression, ExprHash: billingexpr.ExprHashString(expression),
+				ExprString: tc.expression, ExprHash: billingexpr.ExprHashString(tc.expression),
 				GroupRatio: 1, QuotaPerUnit: 1000000, ExprVersion: 1,
-				TaskUsageBilling: true, UsageFacts: reserved, EstimatedTier: "720p",
+				TaskUsageBilling: true, UsageFacts: reserved, EstimatedTier: tc.wantTier,
 			}
+			estimated, err := billingexpr.ComputeTieredQuotaWithRequest(task.PrivateData.BillingContext.TieredSnapshot,
+				billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: reserved})
+			require.NoError(t, err)
+			assert.Equal(t, preConsumed, estimated.ActualQuotaAfterGroup)
+			assert.Equal(t, tc.wantTier, estimated.MatchedTier)
 			require.True(t, settleTaskBillingOnComplete(context.Background(), &mockAdaptor{}, task,
 				&relaycommon.TaskInfo{Status: model.TaskStatusSuccess, UsageFacts: actual}))
-			assert.Equal(t, tc.want, task.Quota)
-			assert.Equal(t, initialQuota+preConsumed-tc.want, getUserQuota(t, userID))
+			wantQuota := tc.wantTokens * tc.unitPrice
+			assert.Equal(t, wantQuota, task.Quota)
+			assert.Equal(t, initialQuota+preConsumed-wantQuota, getUserQuota(t, userID))
 			assert.Equal(t, float64(237600), reserved["tokens"], "submission snapshot must not be mutated")
-			wantFacts := map[string]any{"tokens": float64(tc.want), "resolution": "720p"}
+			wantFacts := map[string]any{"tokens": float64(tc.wantTokens), "resolution": "720p"}
+			if tc.videoInput != "" {
+				wantFacts["video_input"] = tc.videoInput
+			}
 			assert.Equal(t, wantFacts, task.PrivateData.BillingContext.TieredSnapshot.UsageFacts)
-			if tc.want != preConsumed {
+			if wantQuota != preConsumed {
 				log := getLastLog(t)
 				require.NotNil(t, log)
 				var other map[string]any
 				require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
 				assert.Equal(t, wantFacts, other["usage_facts"])
-				assert.Equal(t, "720p", other["matched_tier"])
+				assert.Equal(t, tc.wantTier, other["matched_tier"])
 			}
 		})
 	}
