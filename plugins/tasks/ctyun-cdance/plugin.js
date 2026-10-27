@@ -11,13 +11,29 @@ const RESOLUTIONS = ["480p", "720p", "1080p", "4k"];
 // Mirrors relay/common.MaxTaskDurationSeconds; API v1 exposes no JS constant.
 const MAX_DURATION_SECONDS = 3600;
 const MAX_TOKENS = 2147483647;
+const VIDEO_USAGE_EXAMPLES = [
+  { label: "720p · 11s", facts: { tokens: 238500, resolution: "720p", video_input: "none" } },
+  { label: "720p · 11s · video", facts: { tokens: 238500, resolution: "720p", video_input: "video" } },
+];
+
+function videoUsageSchema(resolutions) {
+  return {
+    tokens: { type: "number", unit: "token", description: { en: "Video generation unit price", zh: "视频生成单价" } },
+    resolution: { enum: resolutions, description: { en: "Output video resolution", zh: "输出视频分辨率" } },
+    video_input: {
+      enum: ["none", "video"],
+      description: { en: "Reference video input", zh: "参考视频输入" },
+      enumLabels: { none: { en: "No reference video", zh: "无参考视频" }, video: { en: "With reference video", zh: "有参考视频" } },
+    },
+  };
+}
 
 export const meta = {
   apiVersion: 1,
   key: "ctyun-cdance",
   name: "CTYun Cdance",
   icon: "text:CT",
-  version: "1.0.0",
+  version: "1.0.1",
   author: { name: "QuantumNous" },
   description: {
     en: "CTYun edge AI gateway Cdance / Seedance video generation",
@@ -26,19 +42,13 @@ export const meta = {
   baseUrl: "https://ai.ctaigw.cn/v1",
   models: Object.keys(VIDEO_MODELS),
   fetchMode: "per_task",
-  usageSchema: {
-    tokens: { type: "number", unit: "token", description: { en: "Video generation unit price", zh: "视频生成单价" } },
-    resolution: { enum: RESOLUTIONS, description: { en: "Output video resolution", zh: "输出视频分辨率" } },
-    video_input: {
-      enum: ["none", "video"],
-      description: { en: "Reference video input", zh: "参考视频输入" },
-      enumLabels: { none: { en: "No reference video", zh: "无参考视频" }, video: { en: "With reference video", zh: "有参考视频" } },
-    },
-  },
-  usageExamples: [
-    { label: "720p · 11s", facts: { tokens: 238500, resolution: "720p", video_input: "none" } },
-    { label: "720p · 11s · video", facts: { tokens: 238500, resolution: "720p", video_input: "video" } },
-  ],
+  usageSchema: videoUsageSchema(RESOLUTIONS),
+  usageExamples: VIDEO_USAGE_EXAMPLES,
+  usageProfiles: Object.entries(VIDEO_MODELS).map(([model, resolutions]) => ({
+    models: [model],
+    schema: videoUsageSchema(resolutions),
+    examples: VIDEO_USAGE_EXAMPLES,
+  })),
   routes: [
     { method: "POST", path: "/ctyun/v1/contents/generations/tasks", type: "submit", decode: "createTask", render: "taskCreated" },
     { method: "GET", path: "/ctyun/v1/contents/generations/tasks/:task_id", type: "query", render: "taskStatus" },

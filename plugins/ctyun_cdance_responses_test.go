@@ -13,6 +13,7 @@ import (
 	builtinplugins "github.com/QuantumNous/new-api/plugins"
 	taskplugin "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,53 @@ func newCTYunPlugin(t *testing.T) *jsplugin.LoadedPlugin {
 	plugin, err := jsplugin.NewRegistry().RegisterFactory(source, jsplugin.Options{Key: "ctyun-cdance"})
 	require.NoError(t, err)
 	return plugin
+}
+
+func TestCTYunUsageProfiles(t *testing.T) {
+	plugin := newCTYunPlugin(t)
+	for _, tc := range []struct {
+		model       string
+		resolutions []string
+	}{
+		{"cdance2.0-0807", []string{"480p", "720p", "1080p", "4k"}},
+		{"cdance2.0-fast-0807", []string{"480p", "720p"}},
+		{"cdance2.0-mini-0807", []string{"480p", "720p"}},
+		{ctyunModel, []string{"480p", "720p", "1080p"}},
+		{"cdance2.0-0813", []string{"480p", "720p", "1080p"}},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			schema, examples := plugin.Meta.UsageForModel(tc.model)
+			assert.Len(t, schema, 3)
+			assert.Equal(t, tc.resolutions, schema["resolution"].Enum)
+			assert.Equal(t, plugin.Meta.UsageSchema["tokens"], schema["tokens"])
+			assert.Equal(t, plugin.Meta.UsageSchema["video_input"], schema["video_input"])
+			require.Len(t, examples, 2)
+			for index, example := range examples {
+				assert.Len(t, example.Facts, 3)
+				assert.EqualValues(t, 238500, example.Facts["tokens"])
+				assert.Equal(t, "720p", example.Facts["resolution"])
+				assert.Equal(t, []string{"none", "video"}[index], example.Facts["video_input"])
+			}
+
+			capabilities, supported := service.VideoPlaygroundCapabilitiesFor(plugin, tc.model)
+			require.True(t, supported)
+			assert.Equal(t, tc.resolutions, capabilities.Resolutions)
+		})
+	}
+
+	t.Run("legacy plugin remains available in the playground", func(t *testing.T) {
+		legacy := *plugin
+		legacy.Meta.Version = "1.0.0"
+		capabilities, supported := service.VideoPlaygroundCapabilitiesFor(&legacy, ctyunModel)
+		require.True(t, supported)
+		assert.Equal(t, []string{"480p", "720p", "1080p"}, capabilities.Resolutions)
+	})
+
+	t.Run("unresolved model retains the default pricing metadata", func(t *testing.T) {
+		schema, examples := plugin.Meta.UsageForModel("ambiguous-alias")
+		assert.Equal(t, []string{"480p", "720p", "1080p", "4k"}, schema["resolution"].Enum)
+		assert.Equal(t, plugin.Meta.UsageExamples, examples)
+	})
 }
 
 func TestCTYunResponsesProtocol(t *testing.T) {

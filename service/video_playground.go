@@ -59,7 +59,7 @@ func VideoPlaygroundCapabilitiesFor(plugin *jsplugin.LoadedPlugin, name string) 
 			cap.GenerateAudio = false
 		}
 	case "ctyun-cdance":
-		if plugin.Meta.Version != "1.0.0" {
+		if plugin.Meta.Version != "1.0.0" && plugin.Meta.Version != "1.0.1" {
 			return cap, false
 		}
 		cap.DurationRequired, cap.ResolutionRequired = true, true
