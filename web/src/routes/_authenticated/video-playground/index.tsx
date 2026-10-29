@@ -31,7 +31,7 @@ export const Route = createFileRoute('/_authenticated/video-playground/')({
     }
   },
   component: () => (
-    <Main>
+    <Main className='overflow-y-auto'>
       <VideoPlayground />
     </Main>
   ),
