@@ -16,11 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  focusManager,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query'
+import { focusManager, QueryClient } from '@tanstack/react-query'
 import {
   act,
   cleanup,
@@ -35,8 +31,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { VideoPlayground } from '..'
 import type { VideoModel } from '../types'
+import { videoPlaygroundTestPage } from './test-page'
 
 const model: VideoModel = {
   plugin_key: 'moma-seedance',
@@ -110,11 +106,7 @@ function renderCatalog(initialModels: VideoModel[] = [model]) {
   )
   client.setQueryData([...key, 'tasks', 1], [])
   client.setQueryData([...key, 'unresolved'], [])
-  const page = (
-    <QueryClientProvider client={client}>
-      <VideoPlayground />
-    </QueryClientProvider>
-  )
+  const page = videoPlaygroundTestPage(client)
   return { state, get, client, page, view: render(page) }
 }
 

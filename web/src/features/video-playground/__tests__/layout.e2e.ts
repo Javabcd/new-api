@@ -157,6 +157,19 @@ async function wheelVideoPage(page: Page, deltaY: number) {
   await page.mouse.wheel(0, deltaY)
 }
 
+test('video generation links to the signed-in video API documentation', async ({
+  page,
+}) => {
+  await page.goto('/video-playground')
+  await page
+    .getByRole('link', { name: 'Video API documentation', exact: true })
+    .click()
+  await expect(page).toHaveURL(/\/docs\/video\/overview$/)
+  await expect(
+    page.getByRole('heading', { name: 'Video API overview', exact: true })
+  ).toBeVisible()
+})
+
 for (const viewport of [
   { width: 1280, height: 480 },
   { width: 390, height: 480 },

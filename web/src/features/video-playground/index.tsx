@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { BookOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -178,7 +180,16 @@ function VideoPlaygroundContent(props: {
 
   return (
     <div className='space-y-6'>
-      <h1 className='text-2xl font-semibold'>{t('Video generation')}</h1>
+      <div className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className='text-2xl font-semibold'>{t('Video generation')}</h1>
+        <Button
+          variant='outline'
+          render={<Link to='/docs/video/$page' params={{ page: 'overview' }} />}
+        >
+          <BookOpen aria-hidden='true' />
+          {t('Video API documentation')}
+        </Button>
+      </div>
       <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
         <Card>
           <CardHeader>

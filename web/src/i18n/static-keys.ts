@@ -918,4 +918,17 @@ export const STATIC_I18N_KEYS = [
   'Audio and music',
   'Embeddings and reranking',
   'Image generation',
+  // Video documentation navigation is selected from the page registry.
+  'Video API overview',
+  'Create a video task',
+  'Query a video task',
+  'Download a video',
+  'Video API troubleshooting',
+  'CTYun Cdance',
+  'Millu Seedance',
+  'China Mobile MoMa Seedance',
+  'Getting started',
+  'API reference',
+  'Video providers',
+  'Help',
 ] as const

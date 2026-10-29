@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import {
   cleanup,
   fireEvent,
@@ -29,8 +29,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { VideoPlayground } from '..'
 import type { VideoTask } from '../types'
+import { videoPlaygroundTestPage } from './test-page'
 
 let client: QueryClient | undefined
 
@@ -83,11 +83,7 @@ test('switching from a failed video to a cached healthy task displays its player
       }
     )
   }
-  const view = render(
-    <QueryClientProvider client={client}>
-      <VideoPlayground />
-    </QueryClientProvider>
-  )
+  const view = render(videoPlaygroundTestPage(client))
   const previews = screen.getAllByRole('button', { name: 'Preview' })
   fireEvent.click(previews[0])
   const failedVideo = view.container.querySelector('video')

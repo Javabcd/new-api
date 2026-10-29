@@ -37,6 +37,11 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], channel: 'chromium' },
     },
+    {
+      name: 'webkit-video-docs',
+      testMatch: '**/video-api-docs/__tests__/*.e2e.ts',
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
   webServer: {
     command: 'bun run dev --host 127.0.0.1 --port 4173 --strict-port',

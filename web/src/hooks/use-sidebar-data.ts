@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  BookOpen,
   ClipboardList,
   CreditCard,
   FileText,
@@ -93,6 +94,12 @@ export function useSidebarData(): SidebarData {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,
+          },
+          {
+            title: t('Video API documentation'),
+            url: '/docs/video/overview',
+            activeUrls: ['/docs'],
+            icon: BookOpen,
           },
           {
             title: t('Usage Logs'),

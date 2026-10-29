@@ -49,7 +49,7 @@ export function normalizeHref(href: string): string {
 }
 
 /**
- * Check if a navigation item is active
+ * Check if a navigation item is active, ignoring hash fragments
  * @param href - Current URL
  * @param item - Navigation item
  * @param mainNav - Whether this is a main navigation item (matches first-level path)
@@ -59,9 +59,14 @@ export function checkIsActive(
   item: NavItem,
   mainNav = false
 ): boolean {
-  const hrefWithoutQuery = href.split('?')[0]
+  const hrefWithoutHash = href.split('#')[0]
+  const hrefWithoutQuery = hrefWithoutHash.split('?')[0]
 
-  if (item.activeUrls?.some((url) => urlToString(url) === hrefWithoutQuery)) {
+  if (
+    item.activeUrls?.some(
+      (url) => urlToString(url)?.split('#')[0] === hrefWithoutQuery
+    )
+  ) {
     return true
   }
 
@@ -74,31 +79,32 @@ export function checkIsActive(
     if (
       items.some((i) => {
         if (!i?.url) return false
-        const subItemUrl = urlToString(i.url)
+        const subItemUrl = urlToString(i.url)?.split('#')[0]
         if (!subItemUrl) return false
-        if (href === subItemUrl) return true
+        if (hrefWithoutHash === subItemUrl) return true
         const subItemUrlWithoutQuery = subItemUrl.split('?')[0]
         const subItemUrlHasQuery = subItemUrl.includes('?')
         if (subItemUrlWithoutQuery === hrefWithoutQuery) {
           // If sub-item URL has no query params, pathname match is enough (href may have query params)
           if (!subItemUrlHasQuery) return true
           // If sub-item URL has query params, they must match exactly
-          if (subItemUrlHasQuery && href === subItemUrl) return true
+          if (subItemUrlHasQuery && hrefWithoutHash === subItemUrl) return true
         }
         return false
       })
-    )
+    ) {
       return true
+    }
   }
 
   // For regular link items, check the item's URL
   if (!item.url) return false
 
-  const itemUrl = urlToString(item.url)
+  const itemUrl = urlToString(item.url)?.split('#')[0]
   if (!itemUrl) return false
 
   // Exact match
-  if (href === itemUrl) return true
+  if (hrefWithoutHash === itemUrl) return true
 
   const itemUrlWithoutQuery = itemUrl.split('?')[0]
   const itemUrlHasQuery = itemUrl.includes('?')
@@ -108,12 +114,12 @@ export function checkIsActive(
     // If item.url has no query params, pathname match is enough (current URL may have query params)
     if (!itemUrlHasQuery) return true
     // If item.url has query params, they must match exactly
-    if (itemUrlHasQuery && href === itemUrl) return true
+    if (itemUrlHasQuery && hrefWithoutHash === itemUrl) return true
   }
 
   // Main navigation match (matches first-level path)
-  if (mainNav && href.split('/')[1] && itemUrl) {
-    const hrefFirstPath = href.split('/')[1]
+  if (mainNav && hrefWithoutHash.split('/')[1] && itemUrl) {
+    const hrefFirstPath = hrefWithoutHash.split('/')[1]
     const itemFirstPath = itemUrl.split('/')[1]
     return hrefFirstPath === itemFirstPath
   }
