@@ -23,9 +23,7 @@ const DOCUMENT_LINKS = [
   ['Create a video task', '/docs/video/create'],
   ['Query a video task', '/docs/video/retrieve'],
   ['Download a video', '/docs/video/content'],
-  ['CTYun Cdance', '/docs/video/ctyun-cdance'],
-  ['Millu Seedance', '/docs/video/millu-seedance'],
-  ['China Mobile MoMa Seedance', '/docs/video/moma-seedance'],
+  ['Best practices', '/docs/video/best-practices'],
   ['Video API troubleshooting', '/docs/video/troubleshooting'],
 ] as const
 
@@ -124,6 +122,69 @@ test('document shortcuts resolve to the overview and invalid pages show not foun
     page.getByText('Oops! Page Not Found!', { exact: true })
   ).toBeVisible()
 })
+
+test('shows one best-practices menu in place of the provider guides', async ({
+  page,
+}) => {
+  await page.goto('/docs/video/best-practices')
+  const sidebar = page.locator('[data-sidebar="sidebar"]')
+  await expect(
+    sidebar.locator('[data-sidebar="menu-button"][href^="/docs/video/"]')
+  ).toHaveCount(6)
+  for (const [title, path] of DOCUMENT_LINKS) {
+    await expect(
+      sidebar.getByRole('link', { name: title, exact: true })
+    ).toHaveAttribute('href', path)
+  }
+  await expect(
+    sidebar.getByText('Video providers', { exact: true })
+  ).toHaveCount(0)
+  await expect(
+    sidebar.getByRole('link', { name: 'Best practices', exact: true })
+  ).toHaveAttribute('data-active')
+  await expect(page.getByRole('article')).not.toContainText(
+    /ctyun|millu|moma|cdance|seedance/i
+  )
+})
+
+test('troubleshooting exposes unified endpoints without provider names or native routes', async ({
+  page,
+}) => {
+  await page.goto('/docs/video/troubleshooting')
+  const article = page.getByRole('article')
+  await expect(article).not.toContainText(/ctyun|millu|moma|cdance|seedance/i)
+  await expect(
+    article.getByRole('heading', { name: 'Native API routes', exact: true })
+  ).toHaveCount(0)
+  await expect(
+    article.getByRole('table', { name: 'Unified video endpoints', exact: true })
+  ).toContainText('https://video.example.com/v1/videos/{id}/content')
+})
+
+for (const provider of ['ctyun-cdance', 'millu-seedance', 'moma-seedance']) {
+  test(`redirects the legacy ${provider} guide to best practices without a back-navigation loop`, async ({
+    page,
+  }) => {
+    await page.goto('/docs/video/overview')
+    await expect(
+      page.getByRole('heading', { name: 'Video API overview', exact: true })
+    ).toBeVisible()
+    await page.goto(`/docs/video/${provider}#models`)
+    await expect(page).toHaveURL(
+      '/docs/video/best-practices#provider-differences'
+    )
+    await expect(
+      page.getByRole('heading', { name: 'Request compatibility', exact: true })
+    ).toBeInViewport()
+    await expect(
+      page
+        .locator('[data-sidebar="sidebar"]')
+        .getByRole('link', { name: 'Best practices', exact: true })
+    ).toHaveAttribute('data-active')
+    await page.goBack()
+    await expect(page).toHaveURL('/docs/video/overview')
+  })
+}
 
 test('keeps the sidebar document selected after chapter navigation and browser history', async ({
   page,
@@ -268,17 +329,17 @@ test('desktop chapters scroll inside the console, update the outline and preserv
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/docs/video/moma-seedance')
+  await page.goto('/docs/video/best-practices')
   const outline = page.getByRole('navigation', { name: 'On this page' })
   await outline
-    .getByRole('link', { name: 'Request example', exact: true })
+    .getByRole('link', { name: 'Request workflow', exact: true })
     .click()
-  await expect(page).toHaveURL(/#example$/)
+  await expect(page).toHaveURL(/#workflow$/)
   await expect(
-    page.getByRole('heading', { name: 'Request example', exact: true })
+    page.getByRole('heading', { name: 'Request workflow', exact: true })
   ).toBeInViewport()
   await expect(
-    outline.getByRole('link', { name: 'Request example', exact: true })
+    outline.getByRole('link', { name: 'Request workflow', exact: true })
   ).toHaveAttribute('aria-current', 'location')
   expect(
     await page
@@ -290,23 +351,26 @@ test('desktop chapters scroll inside the console, update the outline and preserv
     .getByRole('link', { name: 'Media references', exact: true })
     .click()
   await page.goBack()
-  await expect(page).toHaveURL(/#example$/)
+  await expect(page).toHaveURL(/#workflow$/)
   await expect(
-    page.getByRole('heading', { name: 'Request example', exact: true })
+    page.getByRole('heading', { name: 'Request workflow', exact: true })
   ).toBeInViewport()
   await outline
-    .getByRole('link', { name: 'Native API routes', exact: true })
+    .getByRole('link', { name: 'Retries and video storage', exact: true })
     .focus()
   await page.keyboard.press('Enter')
   await expect(
-    outline.getByRole('link', { name: 'Native API routes', exact: true })
+    outline.getByRole('link', {
+      name: 'Retries and video storage',
+      exact: true,
+    })
   ).toHaveAttribute('aria-current', 'location')
   await page
-    .getByRole('link', { name: 'Millu Seedance', exact: true })
+    .getByRole('link', { name: 'Query a video task', exact: true })
     .first()
     .click()
   await expect(
-    page.getByRole('heading', { name: 'Millu Seedance', exact: true })
+    page.getByRole('heading', { name: 'Query a video task', exact: true })
   ).toBeVisible()
 })
 
@@ -346,6 +410,48 @@ test('390px: tabbing to the parameter table lets arrow keys scroll its columns',
 })
 
 for (const width of [390, 768]) {
+  test(`${width}px: unified practices keep the comparison and code usable within the document`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 780 })
+    await page.goto('/docs/video/best-practices')
+    await expect(
+      page.getByRole('heading', { name: 'Best practices', exact: true })
+    ).toBeVisible()
+    const toggle = page.getByRole('button', {
+      name: 'On this page',
+      exact: true,
+    })
+    await toggle.click()
+    await page
+      .getByRole('navigation', { name: 'On this page' })
+      .getByRole('link', { name: 'Request compatibility', exact: true })
+      .click()
+    await expect(
+      page.getByRole('heading', { name: 'Request compatibility', exact: true })
+    ).toBeInViewport()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    const tableRegion = page
+      .getByRole('region', { name: 'Request compatibility', exact: true })
+      .and(page.locator('[tabindex="0"]'))
+    await tableRegion.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect
+      .poll(() => tableRegion.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0)
+    const workflow = page.getByRole('region', {
+      name: 'Request workflow',
+      exact: true,
+    })
+    await workflow.getByRole('tab', { name: 'JavaScript', exact: true }).click()
+    await expect(
+      workflow.getByRole('tab', { name: 'JavaScript', selected: true })
+    ).toBeVisible()
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth)
+    ).toBeLessThanOrEqual(width)
+  })
+
   for (const initialHash of ['', '#text-to-video']) {
     test(`${width}px: mobile chapter selection ${initialHash ? 'with the current hash' : 'with a new hash'} focuses its heading and continues tabbing through its controls`, async ({
       page,

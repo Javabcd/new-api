@@ -18,11 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   BookOpen01Icon,
-  CloudIcon,
   Download01Icon,
   FileAddIcon,
   Search01Icon,
-  SmartPhone01Icon,
   SparklesIcon,
   Wrench01Icon,
 } from '@hugeicons/core-free-icons'
@@ -52,14 +50,8 @@ const VIDEO_DOC_ICONS = {
   content: (props) => (
     <HugeiconsIcon {...props} icon={Download01Icon} aria-hidden='true' />
   ),
-  'ctyun-cdance': (props) => (
-    <HugeiconsIcon {...props} icon={CloudIcon} aria-hidden='true' />
-  ),
-  'millu-seedance': (props) => (
+  'best-practices': (props) => (
     <HugeiconsIcon {...props} icon={SparklesIcon} aria-hidden='true' />
-  ),
-  'moma-seedance': (props) => (
-    <HugeiconsIcon {...props} icon={SmartPhone01Icon} aria-hidden='true' />
   ),
   troubleshooting: (props) => (
     <HugeiconsIcon {...props} icon={Wrench01Icon} aria-hidden='true' />

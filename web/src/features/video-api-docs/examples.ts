@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { VIDEO_DOC_PROVIDERS, type VideoDocProviderId } from './providers'
+export const VIDEO_EXAMPLE_MODEL = 'YOUR_VIDEO_MODEL'
 
 export type VideoExampleLanguage = 'curl' | 'python' | 'javascript'
 export type VideoExampleOperation =
@@ -27,13 +27,12 @@ export type VideoExampleOperation =
 
 export function buildVideoExample(props: {
   baseUrl: string
-  provider: VideoDocProviderId
   language: VideoExampleLanguage
   operation: VideoExampleOperation
   imageReference?: boolean
 }): string {
   const payload = {
-    model: VIDEO_DOC_PROVIDERS[props.provider].model,
+    model: VIDEO_EXAMPLE_MODEL,
     prompt: 'A cat walking beside a quiet river, cinematic tracking shot',
     seconds: 5,
     metadata: { resolution: '720p', ratio: '16:9' },

@@ -21,13 +21,7 @@ export const VIDEO_DOC_PAGES = [
   { id: 'create', title: 'Create a video task', group: 'API reference' },
   { id: 'retrieve', title: 'Query a video task', group: 'API reference' },
   { id: 'content', title: 'Download a video', group: 'API reference' },
-  { id: 'ctyun-cdance', title: 'CTYun Cdance', group: 'Video providers' },
-  { id: 'millu-seedance', title: 'Millu Seedance', group: 'Video providers' },
-  {
-    id: 'moma-seedance',
-    title: 'China Mobile MoMa Seedance',
-    group: 'Video providers',
-  },
+  { id: 'best-practices', title: 'Best practices', group: 'API reference' },
   { id: 'troubleshooting', title: 'Video API troubleshooting', group: 'Help' },
 ] as const
 

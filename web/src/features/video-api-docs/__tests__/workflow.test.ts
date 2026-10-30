@@ -147,7 +147,6 @@ function runWorkflow(
           scenario,
           source: buildVideoExample({
             baseUrl: 'https://gateway.example.com/v1',
-            provider: 'ctyun-cdance',
             language,
             operation: 'workflow',
           }),

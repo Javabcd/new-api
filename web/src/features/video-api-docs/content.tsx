@@ -26,8 +26,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 
 import { VideoCodeExamples } from './components/code-examples'
 import { ReferenceTable } from './components/reference-table'
+import { VIDEO_EXAMPLE_MODEL } from './examples'
 import type { VideoDocPageId } from './navigation'
-import { VIDEO_DOC_PROVIDERS, type VideoDocProviderId } from './providers'
 
 export type VideoDocSection = { id: string; title: string; content: ReactNode }
 
@@ -36,12 +36,8 @@ export function getVideoDocSections(
   baseUrl: string,
   t: TFunction
 ): VideoDocSection[] {
-  if (
-    page === 'ctyun-cdance' ||
-    page === 'millu-seedance' ||
-    page === 'moma-seedance'
-  ) {
-    return getProviderSections(page, baseUrl, t)
+  if (page === 'best-practices') {
+    return getBestPracticeSections(baseUrl, t)
   }
   if (page === 'overview') {
     return [
@@ -106,51 +102,18 @@ export function getVideoDocSections(
                 )}
               </li>
             </ol>
-            <VideoCodeExamples baseUrl={baseUrl} operation='workflow' />
             <p>
               {t(
-                'Python and JavaScript poll every five seconds for up to ten minutes. On timeout, keep the task id and query again instead of submitting another generation.'
-              )}
+                'Review the unified request workflow and compatibility notes before integration.'
+              )}{' '}
+              <Link
+                to='/docs/video/$page'
+                params={{ page: 'best-practices' }}
+                className='text-primary underline underline-offset-4'
+              >
+                {t('Best practices')}
+              </Link>
             </p>
-            <p>
-              {t(
-                'For cURL, replace YOUR_TASK_ID with the returned id and repeat the query before downloading.'
-              )}
-            </p>
-          </>
-        ),
-      },
-      {
-        id: 'providers',
-        title: t('Supported providers'),
-        content: (
-          <>
-            <p>
-              {t(
-                'Model names and aliases follow channel routing. To select a specific provider, configure the matching channel and API key group.'
-              )}
-            </p>
-            <ReferenceTable
-              label={t('Supported providers')}
-              columns={[t('Provider'), t('Model'), t('Supported resolutions')]}
-              rows={(
-                Object.entries(VIDEO_DOC_PROVIDERS) as [
-                  VideoDocProviderId,
-                  (typeof VIDEO_DOC_PROVIDERS)[VideoDocProviderId],
-                ][]
-              ).map(([id, provider]) => [
-                <Link
-                  key={id}
-                  to='/docs/video/$page'
-                  params={{ page: id }}
-                  className='text-primary underline underline-offset-4'
-                >
-                  {provider.name}
-                </Link>,
-                provider.model,
-                provider.models[0].resolutions,
-              ])}
-            />
           </>
         ),
       },
@@ -161,7 +124,7 @@ export function getVideoDocSections(
           <Alert>
             <AlertDescription>
               {t(
-                'Preview streams video from the provider. Save completed videos to your own server or object storage for long-term access. Millu and MoMa result links expire after about 24 hours; CTYun retention is provider-defined.'
+                'Preview streams video from upstream. Download completed videos promptly and save them to your own server or object storage. Result links may expire; retention depends on the configured channel.'
               )}
             </AlertDescription>
           </Alert>
@@ -175,7 +138,7 @@ export function getVideoDocSections(
       {
         id: 'task_example',
         object: 'video',
-        model: VIDEO_DOC_PROVIDERS['ctyun-cdance'].model,
+        model: VIDEO_EXAMPLE_MODEL,
         status: 'queued',
         progress: 0,
         created_at: 1700000000,
@@ -194,7 +157,7 @@ export function getVideoDocSections(
             </code>
             <p>
               {t(
-                'JSON is recommended. Multipart fields are accepted, but these three providers require media references instead of uploaded files.'
+                'JSON is recommended. Use reachable media references unless the configured channel explicitly supports file uploads.'
               )}
             </p>
           </>
@@ -224,7 +187,7 @@ export function getVideoDocSections(
                 'seconds',
                 'integer | string',
                 t(
-                  'Video duration in seconds. Required by CTYun; optional for Millu and MoMa. See provider limits.'
+                  'Video duration in seconds. Set an explicit supported duration; defaults and automatic duration support depend on the configured channel.'
                 ),
               ],
               [
@@ -238,7 +201,7 @@ export function getVideoDocSections(
                 'metadata.resolution',
                 'string',
                 t(
-                  'Output resolution, such as 720p. Required by CTYun; supported values vary by model.'
+                  'Output resolution, such as 720p. Set an explicit supported value; available resolutions depend on the configured model and channel.'
                 ),
               ],
               [
@@ -277,8 +240,16 @@ export function getVideoDocSections(
             <VideoCodeExamples baseUrl={baseUrl} operation='create' />
             <p>
               {t(
-                'These examples use CTYun. Open a provider guide for its model names and ready-to-copy request.'
-              )}
+                'Replace YOUR_VIDEO_MODEL with an enabled model name or channel alias before running any example.'
+              )}{' '}
+              <Link
+                to='/docs/video/$page'
+                params={{ page: 'best-practices' }}
+                hash='provider-differences'
+                className='text-primary underline underline-offset-4'
+              >
+                {t('Request compatibility')}
+              </Link>
             </p>
           </>
         ),
@@ -473,7 +444,7 @@ export function getVideoDocSections(
           <>
             <p>
               {t(
-                'Preview streams video from the provider. Save completed videos to your own server or object storage for long-term access. Millu and MoMa result links expire after about 24 hours; CTYun retention is provider-defined.'
+                'Preview streams video from upstream. Download completed videos promptly and save them to your own server or object storage. Result links may expire; retention depends on the configured channel.'
               )}
             </p>
             <Alert>
@@ -558,128 +529,98 @@ export function getVideoDocSections(
       ),
     },
     {
-      id: 'native-routes',
-      title: t('Native API routes'),
+      id: 'unified-endpoints',
+      title: t('Unified video endpoints'),
       content: (
-        <>
-          <p>
-            {t(
-              'Native routes use the provider request format and your platform API key. This guide uses the unified video endpoints.'
-            )}
-          </p>
-          <ReferenceTable
-            label={t('Native API routes')}
-            columns={[t('Provider'), t('Create'), t('Query')]}
-            rows={Object.values(VIDEO_DOC_PROVIDERS).map((provider) => [
-              provider.name,
-              `POST ${provider.nativePath}`,
-              `GET ${provider.nativePath}/{task_id}`,
-            ])}
-          />
-        </>
+        <ReferenceTable
+          label={t('Unified video endpoints')}
+          columns={[t('Method'), t('Endpoint')]}
+          rows={[
+            ['POST', `${baseUrl}/videos`],
+            ['GET', `${baseUrl}/videos/{id}`],
+            ['GET / HEAD', `${baseUrl}/videos/{id}/content`],
+          ]}
+        />
       ),
     },
   ]
 }
 
-function getProviderSections(
-  providerId: VideoDocProviderId,
+function getBestPracticeSections(
   baseUrl: string,
   t: TFunction
 ): VideoDocSection[] {
-  const provider = VIDEO_DOC_PROVIDERS[providerId]
-  const restrictions: ReactNode[] = []
-  if (providerId === 'ctyun-cdance') {
-    restrictions.push(
-      <p key='duration'>
-        {t(
-          'CTYun requires an explicit duration and resolution. Size at the request root can be converted to a resolution tier; metadata.size does not satisfy the resolution requirement.'
-        )}
-      </p>,
-      <p key='limits'>
-        {t(
-          'The 3600-second gateway limit is a safety bound, not a guarantee of provider support. Confirm supported durations with your provider.'
-        )}
-      </p>,
-      <p key='media'>
-        {t(
-          'CTYun forwards ratio, media content and optional switches to the provider. Confirm their supported values with your channel provider.'
-        )}
-      </p>
-    )
-  } else if (providerId === 'millu-seedance') {
-    restrictions.push(
-      <p key='duration'>
-        {t(
-          'Millu accepts 720p or 1080p. Duration and resolution may be omitted to keep upstream defaults. Automatic duration -1, callback_url and frames are unsupported.'
-        )}
-      </p>,
-      <p key='limits'>
-        {t(
-          'The 3600-second gateway limit is a safety bound, not a guarantee of provider support. Confirm supported durations with your provider.'
-        )}
-      </p>,
-      <p key='size'>
-        {t(
-          'Millu size accepts 1280x720 or 1920x1080. For first/last-frame tasks, omit ratio or use adaptive; last_frame requires first_frame.'
-        )}
-      </p>,
-      <p key='media'>
-        {t(
-          'Millu accepts HTTP(S), asset and Data URLs. When using multiple images, specify a role for each image. Result links expire after about 24 hours.'
-        )}
-      </p>
-    )
-  } else {
-    restrictions.push(
-      <p key='duration'>
-        {t(
-          'MoMa accepts integer durations from 4 to 15 seconds, or -1 for automatic duration. Resolutions are 480p, 720p and 1080p.'
-        )}
-      </p>,
-      <p key='defaults'>
-        {t(
-          'MoMa defaults: 5 seconds, 720p, adaptive ratio, audio enabled, watermark and last-frame return disabled. Omitted fields keep upstream defaults.'
-        )}
-      </p>,
-      <p key='unsupported'>
-        {t(
-          'MoMa rejects size, frames and SDK video encryption parameters. Video references cannot use Base64. Result links expire after about 24 hours.'
-        )}
-      </p>,
-      <p key='media'>
-        {t(
-          'MoMa allows up to 9 reference images, 3 videos and 3 audio references. Audio requires an image or video. First/last frames cannot be mixed with multimodal references; last_frame requires first_frame.'
-        )}
-      </p>
-    )
-  }
   return [
     {
-      id: 'models',
-      title: t('Models and resolutions'),
+      id: 'request-preparation',
+      title: t('Request preparation'),
       content: (
         <>
+          <p>
+            {t(
+              'Replace YOUR_VIDEO_MODEL with an enabled model name or channel alias before running any example.'
+            )}
+          </p>
           <p>
             {t(
               'Model names and aliases follow channel routing. To select a specific provider, configure the matching channel and API key group.'
             )}
           </p>
-          <ReferenceTable
-            label={t('Models and resolutions')}
-            columns={[t('Model'), t('Supported resolutions')]}
-            rows={provider.models.map((model) => [
-              model.name,
-              model.resolutions,
-            ])}
-          />
+          <p>
+            {t(
+              'Set NEW_API_KEY in the environment before running the examples. Python uses the standard library; JavaScript requires Node.js 20 or later.'
+            )}
+          </p>
         </>
       ),
     },
     {
-      id: 'provider-limits',
-      title: t('Provider limits'),
-      content: restrictions,
+      id: 'workflow',
+      title: t('Request workflow'),
+      content: (
+        <>
+          <ol className='list-decimal space-y-2 pl-5'>
+            <li>{t('Submit once and save the returned task id.')}</li>
+            <li>
+              {t('Query the task until its status is completed or failed.')}
+            </li>
+            <li>
+              {t(
+                'Download the completed video and save it to your own storage.'
+              )}
+            </li>
+          </ol>
+          <VideoCodeExamples baseUrl={baseUrl} operation='workflow' />
+          <p>
+            {t(
+              'Python and JavaScript poll every five seconds for up to ten minutes. On timeout, keep the task id and query again instead of submitting another generation.'
+            )}
+          </p>
+          <p>
+            {t(
+              'For cURL, replace YOUR_TASK_ID with the returned id and repeat the query before downloading.'
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      id: 'image-to-video',
+      title: t('Image to video'),
+      content: (
+        <>
+          <p>
+            {t(
+              'Use a reachable reference image URL. The shorthand input_reference is converted to a reference_image entry.'
+            )}
+          </p>
+          <VideoCodeExamples
+            baseUrl={baseUrl}
+            operation='create'
+            imageReference
+          />
+        </>
+      ),
     },
     {
       id: 'media-references',
@@ -696,68 +637,115 @@ function getProviderSections(
             columns={[t('Type'), t('Roles')]}
             rows={[
               ['image_url', 'reference_image / first_frame / last_frame'],
+              ['video_url', 'reference_video'],
+              ['audio_url', 'reference_audio'],
+            ]}
+          />
+          <p>
+            {t(
+              'Media types, roles, source formats and counts depend on the configured channel. Use reachable HTTP(S) URLs by default; asset, Data URL and Base64 inputs require explicit support.'
+            )}
+          </p>
+          <ReferenceTable
+            label={t('Media input compatibility')}
+            columns={[t('Type'), t('Description')]}
+            rows={[
               [
-                'video_url',
-                providerId === 'ctyun-cdance'
-                  ? t('Provider-defined')
-                  : 'reference_video',
+                'image_url',
+                t(
+                  'When first/last-frame input is supported, last_frame requires first_frame. Some configurations require an omitted or adaptive ratio and prohibit mixing first/last frames with other media references.'
+                ),
               ],
               [
-                'audio_url',
-                providerId === 'ctyun-cdance'
-                  ? t('Provider-defined')
-                  : 'reference_audio',
+                'video_url / audio_url',
+                t(
+                  'Supported counts vary. Some configurations allow up to 9 images, 3 videos and 3 audio inputs; audio references may require an image or video.'
+                ),
               ],
             ]}
           />
-          {providerId !== 'ctyun-cdance' && (
-            <p>
-              {t(
-                'Supported ratios: 21:9, 16:9, 4:3, 1:1, 3:4, 9:16 and adaptive.'
-              )}
-            </p>
-          )}
+          <p>
+            {t(
+              'The frames request field is separate from the first_frame and last_frame media roles.'
+            )}
+          </p>
         </>
       ),
     },
     {
-      id: 'example',
-      title: t('Request example'),
-      content: (
-        <VideoCodeExamples
-          baseUrl={baseUrl}
-          provider={providerId}
-          operation='create'
-        />
-      ),
-    },
-    {
-      id: 'image-example',
-      title: t('Image to video'),
-      content: (
-        <VideoCodeExamples
-          baseUrl={baseUrl}
-          provider={providerId}
-          operation='create'
-          imageReference
-        />
-      ),
-    },
-    {
-      id: 'native-route',
-      title: t('Native API routes'),
+      id: 'provider-differences',
+      title: t('Request compatibility'),
       content: (
         <>
           <p>
             {t(
-              'Native routes use the provider request format and your platform API key. This guide uses the unified video endpoints.'
+              'The examples set duration, resolution and ratio explicitly. Check supported fields, limits and defaults for your configuration before changing them.'
             )}
           </p>
-          <code className='bg-muted/40 block overflow-x-auto rounded-lg border p-4 text-xs'>
-            POST {provider.nativePath}
-            <br />
-            GET {provider.nativePath}/&#123;task_id&#125;
-          </code>
+          <ReferenceTable
+            label={t('Request compatibility')}
+            columns={[t('Parameter'), t('Description')]}
+            rows={[
+              [
+                'seconds',
+                t(
+                  'Video duration in seconds. Set an explicit supported duration; defaults and automatic duration support depend on the configured channel.'
+                ),
+              ],
+              [
+                'metadata.resolution',
+                t(
+                  'Output resolution, such as 720p. Set an explicit supported value; available resolutions depend on the configured model and channel.'
+                ),
+              ],
+              [
+                'metadata.ratio',
+                t(
+                  'Aspect ratio, such as 16:9 or adaptive. See provider limits.'
+                ),
+              ],
+              [
+                'size / callback_url / frames',
+                t(
+                  'Fields such as size, callback_url, frames and video encryption options may be rejected. Prefer metadata.resolution over size or metadata.size, and send only supported optional fields.'
+                ),
+              ],
+              [
+                'metadata.generate_audio / metadata.watermark',
+                t('Optional switch; omitted fields keep provider defaults.'),
+              ],
+            ]}
+          />
+          <p>
+            {t(
+              'The 3600-second gateway limit is a safety bound, not a guarantee of provider support. Confirm supported durations with your provider.'
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      id: 'retries-and-storage',
+      title: t('Retries and video storage'),
+      content: (
+        <>
+          <Alert>
+            <AlertDescription>
+              {t(
+                'If submission times out after reaching the server, check Task Logs before submitting again. Repeating POST may create another task and charge.'
+              )}
+            </AlertDescription>
+          </Alert>
+          <p>
+            {t(
+              'Preview streams video from upstream. Download completed videos promptly and save them to your own server or object storage. Result links may expire; retention depends on the configured channel.'
+            )}
+          </p>
+          <p>
+            {t(
+              'A task record does not guarantee permanent access to its video. An expired provider link may return HTTP 410.'
+            )}
+          </p>
         </>
       ),
     },

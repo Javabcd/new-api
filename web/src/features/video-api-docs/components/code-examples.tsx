@@ -28,7 +28,6 @@ import {
   type VideoExampleLanguage,
   type VideoExampleOperation,
 } from '../examples'
-import type { VideoDocProviderId } from '../providers'
 
 const LANGUAGES = [
   { id: 'curl', title: 'cURL', highlight: 'bash' },
@@ -38,7 +37,6 @@ const LANGUAGES = [
 
 export function VideoCodeExamples(props: {
   baseUrl: string
-  provider?: VideoDocProviderId
   operation: VideoExampleOperation
   imageReference?: boolean
 }) {
@@ -59,7 +57,6 @@ export function VideoCodeExamples(props: {
       {LANGUAGES.map((entry) => {
         const code = buildVideoExample({
           baseUrl: props.baseUrl,
-          provider: props.provider ?? 'ctyun-cdance',
           operation: props.operation,
           imageReference: props.imageReference,
           language: entry.id,

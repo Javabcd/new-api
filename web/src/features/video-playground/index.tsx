@@ -22,6 +22,7 @@ import { BookOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { TimestampCell } from '@/components/activity-time-cell'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StaticDataTable } from '@/components/data-table'
 import { EmptyState } from '@/components/empty-state'
@@ -354,6 +355,17 @@ function VideoPlaygroundContent(props: {
                   <span className='font-mono text-xs break-all'>
                     {task.task_id}
                   </span>
+                ),
+              },
+              {
+                id: 'created_at',
+                header: t('Created At'),
+                cell: (task) => (
+                  <TimestampCell
+                    timestamp={task.created_at}
+                    format='absolute'
+                    justNowLabel={t('Just now')}
+                  />
                 ),
               },
               {

@@ -157,6 +157,69 @@ async function wheelVideoPage(page: Page, deltaY: number) {
   await page.mouse.wheel(0, deltaY)
 }
 
+test.describe('task creation time', () => {
+  test.use({ timezoneId: 'Asia/Hong_Kong' })
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 600 },
+  ]) {
+    test(`${viewport.width}px: task history displays the full local creation time`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport)
+      await page.goto('/video-playground')
+      const table = page.getByRole('table')
+      await expect(
+        table.getByRole('columnheader', { name: 'Created At', exact: true })
+      ).toBeVisible()
+      const row = table.getByRole('row').filter({
+        has: page.getByRole('cell', { name: 'task-1', exact: true }),
+      })
+      const createdAt = row.locator('time')
+      await expect(createdAt).toHaveText('2023-11-15 06:13:20')
+      await expect(createdAt).toHaveAttribute(
+        'datetime',
+        '2023-11-14T22:13:20.000Z'
+      )
+      await createdAt.scrollIntoViewIfNeeded()
+      await expect(createdAt).toBeInViewport({ ratio: 1 })
+      const preview = row.getByRole('button', { name: 'Preview', exact: true })
+      await preview.scrollIntoViewIfNeeded()
+      await expect(preview).toBeInViewport({ ratio: 1 })
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth
+        )
+      ).toBe(true)
+    })
+  }
+
+  test('task history uses a placeholder when creation time is zero or missing', async ({
+    page,
+  }) => {
+    await page.route('**/pg/video/tasks*', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            { ...tasks[0], created_at: 0 },
+            { ...tasks[1], created_at: undefined },
+          ],
+        },
+      })
+    )
+    await page.goto('/video-playground')
+    const table = page.getByRole('table')
+    await expect(
+      table.getByRole('columnheader', { name: 'Created At', exact: true })
+    ).toBeVisible()
+    await expect(
+      table.getByRole('cell', { name: '-', exact: true })
+    ).toHaveCount(2)
+  })
+})
+
 test('video generation links to the signed-in video API documentation', async ({
   page,
 }) => {

@@ -924,11 +924,8 @@ export const STATIC_I18N_KEYS = [
   'Query a video task',
   'Download a video',
   'Video API troubleshooting',
-  'CTYun Cdance',
-  'Millu Seedance',
-  'China Mobile MoMa Seedance',
+  'Best practices',
   'Getting started',
   'API reference',
-  'Video providers',
   'Help',
 ] as const

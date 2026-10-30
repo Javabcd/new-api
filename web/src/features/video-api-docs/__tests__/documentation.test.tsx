@@ -51,6 +51,10 @@ import { useAuthStore } from '@/stores/auth-store'
 import { VideoApiDocs } from '..'
 import type { VideoDocPageId } from '../navigation'
 
+const DOCUMENT_LOCALES = { en, zhCN: zh, zhTW, fr, ja, ru, vi: viLocale }
+const PRIVATE_VIDEO_IDENTIFIERS =
+  /ctyun|millu|moma|cdance|seedance|天翼|中国移动|中國移動/i
+
 let client: QueryClient
 
 beforeEach(async () => {
@@ -93,29 +97,31 @@ async function renderDocs(page: VideoDocPageId) {
 }
 
 it.each([
-  ['ctyun-cdance', 'cdance2.0-0807'],
-  ['millu-seedance', 'millu-sd-x-2-5-260801'],
-  ['moma-seedance', 'doubao-seedance-2-0-260128'],
+  ['create', 'Text to video'],
+  ['best-practices', 'Request workflow'],
 ] as const)(
-  'copies usable %s requests in every example language',
-  async (provider, model) => {
+  'copies model-neutral %s requests in every example language',
+  async (page, section) => {
     const user = userEvent.setup()
-    await renderDocs(provider)
-    const examples = within(
-      screen.getByRole('region', { name: 'Request example' })
-    )
+    await renderDocs(page)
+    const examples = within(screen.getByRole('region', { name: section }))
     for (const language of ['cURL', 'Python', 'JavaScript']) {
       await user.click(examples.getByRole('tab', { name: language }))
       await user.click(examples.getByRole('button', { name: 'Copy code' }))
       const code = await navigator.clipboard.readText()
-      expect(code).toContain(model)
+      expect(code).toContain('YOUR_VIDEO_MODEL')
+      expect(code).not.toMatch(PRIVATE_VIDEO_IDENTIFIERS)
       expect(code).toContain('https://gateway.example.com/proxy/v1')
       expect(code).not.toContain('/v1/v1')
       expect(code).toContain('720p')
       expect(code).toContain('16:9')
       expect(code).not.toMatch(/["']size["']\s*:/)
       expect(code).toContain('NEW_API_KEY')
-      expect(code).not.toContain('YOUR_TASK_ID')
+      if (page === 'create') expect(code).not.toContain('YOUR_TASK_ID')
+      if (page === 'best-practices') {
+        expect(code).toContain('/videos/')
+        expect(code).toContain('/content')
+      }
     }
 
     const imageExample = within(
@@ -128,9 +134,105 @@ it.each([
   }
 )
 
+it.each([
+  'overview',
+  'create',
+  'retrieve',
+  'content',
+  'best-practices',
+  'troubleshooting',
+] as const)(
+  'does not publish concrete models or providers on the %s page',
+  async (page) => {
+    await renderDocs(page)
+    expect(screen.getByRole('article')).not.toHaveTextContent(
+      PRIVATE_VIDEO_IDENTIFIERS
+    )
+    if (page === 'create') {
+      expect(
+        screen.getByRole('region', { name: 'Response' })
+      ).toHaveTextContent('YOUR_VIDEO_MODEL')
+      expect(
+        screen.getByRole('table', { name: 'Request parameters' })
+      ).toHaveTextContent(
+        'Required. Use an enabled model name or channel alias.'
+      )
+    }
+  }
+)
+
+it('describes conditional request and media support without identifying channels', async () => {
+  await renderDocs('best-practices')
+  const compatibility = within(
+    screen.getByRole('table', { name: 'Request compatibility' })
+  )
+  expect(
+    compatibility.getByRole('row', { name: /^seconds\b/ })
+  ).toHaveTextContent(
+    'automatic duration support depend on the configured channel'
+  )
+  expect(
+    compatibility.getByRole('row', { name: /^metadata.resolution\b/ })
+  ).toHaveTextContent(
+    'available resolutions depend on the configured model and channel'
+  )
+  expect(compatibility.getByRole('row', { name: /^size\b/ })).toHaveTextContent(
+    'send only supported optional fields'
+  )
+  const media = screen.getByRole('table', { name: 'Media input compatibility' })
+  expect(
+    within(media).getByRole('row', { name: /^image_url\b/ })
+  ).toHaveTextContent('last_frame requires first_frame')
+  expect(
+    within(media).getByRole('row', { name: /^video_url\b/ })
+  ).toHaveTextContent('Supported counts vary')
+})
+
+it.each(['best-practices', 'troubleshooting'] as const)(
+  'does not reveal provider names or native routes on %s in any interface language',
+  async (page) => {
+    for (const [language, resource] of Object.entries(DOCUMENT_LOCALES)) {
+      i18next.addResourceBundle(
+        language,
+        'translation',
+        resource.translation,
+        true,
+        true
+      )
+    }
+    await renderDocs(page)
+    for (const language of Object.keys(DOCUMENT_LOCALES)) {
+      await act(() => i18next.changeLanguage(language))
+      const article = screen.getByRole('article')
+      expect(article).not.toHaveTextContent(PRIVATE_VIDEO_IDENTIFIERS)
+      for (const link of within(article).getAllByRole('link')) {
+        expect(link.getAttribute('href')).not.toMatch(PRIVATE_VIDEO_IDENTIFIERS)
+      }
+    }
+  }
+)
+
+it('lists only unified video endpoints in troubleshooting', async () => {
+  await renderDocs('troubleshooting')
+  const endpoints = screen.getByRole('table', {
+    name: 'Unified video endpoints',
+  })
+  expect(endpoints).toHaveTextContent(
+    'https://gateway.example.com/proxy/v1/videos'
+  )
+  expect(endpoints).toHaveTextContent(
+    'https://gateway.example.com/proxy/v1/videos/{id}'
+  )
+  expect(endpoints).toHaveTextContent(
+    'https://gateway.example.com/proxy/v1/videos/{id}/content'
+  )
+  expect(
+    screen.queryByRole('heading', { name: 'Native API routes' })
+  ).not.toBeInTheDocument()
+})
+
 it('switches all seven interface languages while keeping chapter ids and selected example language', async () => {
-  const resources = { en, zhCN: zh, zhTW, fr, ja, ru, vi: viLocale }
-  for (const [language, resource] of Object.entries(resources)) {
+  for (const [language, resource] of Object.entries(DOCUMENT_LOCALES)) {
     i18next.addResourceBundle(
       language,
       'translation',
@@ -140,20 +242,22 @@ it('switches all seven interface languages while keeping chapter ids and selecte
     )
   }
   const user = userEvent.setup()
-  await renderDocs('create')
-  const examples = within(screen.getByRole('region', { name: 'Text to video' }))
+  await renderDocs('best-practices')
+  const examples = within(
+    screen.getByRole('region', { name: 'Request workflow' })
+  )
   await user.click(examples.getByRole('tab', { name: 'Python' }))
-  for (const [language, resource] of Object.entries(resources)) {
+  for (const [language, resource] of Object.entries(DOCUMENT_LOCALES)) {
     await act(() => i18next.changeLanguage(language))
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      resource.translation['Create a video task']
+      resource.translation['Best practices']
     )
     expect(
       screen.getByRole('heading', {
         level: 2,
-        name: resource.translation['Request parameters'],
+        name: resource.translation['Request compatibility'],
       })
-    ).toHaveAttribute('id', 'request-parameters')
+    ).toHaveAttribute('id', 'provider-differences')
     expect(
       examples.getByRole('tab', { name: 'Python', selected: true })
     ).toBeVisible()
