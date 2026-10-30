@@ -59,15 +59,28 @@ func TestCTYunUsageProfiles(t *testing.T) {
 			capabilities, supported := service.VideoPlaygroundCapabilitiesFor(plugin, tc.model)
 			require.True(t, supported)
 			assert.Equal(t, tc.resolutions, capabilities.Resolutions)
+			assert.False(t, capabilities.DurationRequired)
+			assert.False(t, capabilities.ResolutionRequired)
 		})
 	}
 
-	t.Run("legacy plugin remains available in the playground", func(t *testing.T) {
-		legacy := *plugin
-		legacy.Meta.Version = "1.0.0"
-		capabilities, supported := service.VideoPlaygroundCapabilitiesFor(&legacy, ctyunModel)
-		require.True(t, supported)
-		assert.Equal(t, []string{"480p", "720p", "1080p"}, capabilities.Resolutions)
+	for _, version := range []string{"1.0.0", "1.0.1"} {
+		t.Run("legacy "+version+" keeps required playground parameters", func(t *testing.T) {
+			legacy := *plugin
+			legacy.Meta.Version = version
+			capabilities, supported := service.VideoPlaygroundCapabilitiesFor(&legacy, ctyunModel)
+			require.True(t, supported)
+			assert.Equal(t, []string{"480p", "720p", "1080p"}, capabilities.Resolutions)
+			assert.True(t, capabilities.DurationRequired)
+			assert.True(t, capabilities.ResolutionRequired)
+		})
+	}
+
+	t.Run("unknown plugin version is unavailable in the playground", func(t *testing.T) {
+		unknown := *plugin
+		unknown.Meta.Version = "9.9.9"
+		_, supported := service.VideoPlaygroundCapabilitiesFor(&unknown, ctyunModel)
+		assert.False(t, supported)
 	})
 
 	t.Run("unresolved model retains the default pricing metadata", func(t *testing.T) {
@@ -231,65 +244,86 @@ func TestCTYunSubmission(t *testing.T) {
 		map[string]any{"type": "image_url", "role": "first_frame", "image_url": map[string]any{"url": "https://example.com/frame.png"}},
 		map[string]any{"type": "text", "text": "last text"},
 	}
-	for _, surface := range []string{"native", "task", "openai_video", "openai_responses", "multipart"} {
-		t.Run(surface, func(t *testing.T) {
-			metadata := map[string]any{"content": content, "duration": 11, "resolution": "720P", "watermark": false, "generate_audio": false, "return_last_frame": true, "seed": 0, "service_tier": "default", "draft": false, "future_option": map[string]any{"enabled": true}}
-			request := map[string]any{"model": "seedance-2.5", "metadata": metadata}
-			if surface != "task" {
-				ctx := map[string]any{"model": "seedance-2.5", "body": map[string]any{"kind": "json", "value": request}}
-				var value any
-				var err error
-				if surface == "native" {
-					body := maps.Clone(metadata)
-					body["model"] = "seedance-2.5"
-					ctx["body"] = map[string]any{"kind": "json", "value": body}
-					value, err = plugin.Engine.CallMember(t.Context(), "native", "createTask", ctx)
-				} else {
-					protocol := surface
-					if surface == "multipart" {
-						encoded, marshalErr := common.Marshal(metadata)
-						require.NoError(t, marshalErr)
-						ctx["body"] = map[string]any{"kind": "multipart", "fields": map[string]any{"metadata": []string{string(encoded)}}}
-						protocol = "openai_video"
+	for _, tc := range []struct {
+		name           string
+		parameters     map[string]any
+		wantParameters map[string]any
+		wantTokens     float64
+		wantResolution string
+	}{
+		{"explicit parameters", map[string]any{"duration": 11, "resolution": "720P"}, map[string]any{"duration": 11, "resolution": "720p"}, 237600, "720p"},
+		{"both omitted", nil, nil, 108000, "720p"},
+		{"duration omitted", map[string]any{"resolution": "1080P"}, map[string]any{"resolution": "1080p"}, 243000, "1080p"},
+		{"resolution omitted", map[string]any{"duration": 11}, map[string]any{"duration": 11}, 237600, "720p"},
+	} {
+		for _, surface := range []string{"native", "task", "openai_video", "openai_responses", "multipart"} {
+			t.Run(tc.name+"/"+surface, func(t *testing.T) {
+				metadata := map[string]any{"content": content, "watermark": false, "generate_audio": false, "return_last_frame": true, "seed": 0, "service_tier": "default", "draft": false, "future_option": map[string]any{"enabled": true}}
+				maps.Copy(metadata, tc.parameters)
+				request := map[string]any{"model": "seedance-2.5", "metadata": metadata}
+				if surface != "task" {
+					ctx := map[string]any{"model": "seedance-2.5", "body": map[string]any{"kind": "json", "value": request}}
+					var value any
+					var err error
+					if surface == "native" {
+						body := maps.Clone(metadata)
+						body["model"] = "seedance-2.5"
+						ctx["body"] = map[string]any{"kind": "json", "value": body}
+						value, err = plugin.Engine.CallMember(t.Context(), "native", "createTask", ctx)
+					} else {
+						protocol := surface
+						if surface == "multipart" {
+							encoded, marshalErr := common.Marshal(metadata)
+							require.NoError(t, marshalErr)
+							ctx["body"] = map[string]any{"kind": "multipart", "fields": map[string]any{"metadata": []string{string(encoded)}}}
+							protocol = "openai_video"
+						}
+						value, err = plugin.Engine.CallPath(t.Context(), "protocols", []string{protocol, "decodeRequest"}, ctx)
 					}
-					value, err = plugin.Engine.CallPath(t.Context(), "protocols", []string{protocol, "decodeRequest"}, ctx)
+					require.NoError(t, err)
+					intent := alibabaObject(t, value)
+					assert.Equal(t, "seedance-2.5", intent["model"])
+					request = intent["requestBody"].(map[string]any)
 				}
+				info := &relaycommon.RelayInfo{
+					ChannelMeta:     &relaycommon.ChannelMeta{ChannelBaseUrl: "https://ai.ctaigw.cn/v1", UpstreamModelName: ctyunModel},
+					OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"},
+				}
+				adaptor := taskplugin.New(plugin)
+				adaptor.Init(info)
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/tasks/ctyun-cdance", nil)
+				c.Set("task_request", request)
+				require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+				reader, err := adaptor.BuildRequestBody(c, info)
 				require.NoError(t, err)
-				intent := alibabaObject(t, value)
-				assert.Equal(t, "seedance-2.5", intent["model"])
-				request = intent["requestBody"].(map[string]any)
-			}
-			info := &relaycommon.RelayInfo{
-				ChannelMeta:     &relaycommon.ChannelMeta{ChannelBaseUrl: "https://ai.ctaigw.cn/v1", UpstreamModelName: ctyunModel},
-				OriginModelName: "seedance-2.5", TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"},
-			}
-			adaptor := taskplugin.New(plugin)
-			adaptor.Init(info)
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/tasks/ctyun-cdance", nil)
-			c.Set("task_request", request)
-			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
-			reader, err := adaptor.BuildRequestBody(c, info)
-			require.NoError(t, err)
-			encoded, err := io.ReadAll(reader)
-			require.NoError(t, err)
-			var body map[string]any
-			require.NoError(t, common.Unmarshal(encoded, &body))
-			want := maps.Clone(metadata)
-			want["model"] = ctyunModel
-			want["resolution"] = "720p"
-			assert.Equal(t, alibabaObject(t, want), body)
-			assert.Equal(t, "seedance-2.5", info.OriginModelName)
-			url, err := adaptor.BuildRequestURL(info)
-			require.NoError(t, err)
-			assert.Equal(t, "https://ai.ctaigw.cn/v1/contents/generations/tasks", url)
-			assert.NotContains(t, url, "/api/v3/")
-			facts, err := adaptor.ExtractUsageFactsValidated(c, info)
-			require.NoError(t, err)
-			assert.Equal(t, float64(237600), facts["tokens"])
-			assert.Equal(t, "720p", facts["resolution"])
-			assert.Equal(t, "video", facts["video_input"])
-		})
+				encoded, err := io.ReadAll(reader)
+				require.NoError(t, err)
+				var body map[string]any
+				require.NoError(t, common.Unmarshal(encoded, &body))
+				want := maps.Clone(metadata)
+				want["model"] = ctyunModel
+				maps.Copy(want, tc.wantParameters)
+				assert.Equal(t, alibabaObject(t, want), body)
+				assert.Equal(t, "seedance-2.5", info.OriginModelName)
+				url, err := adaptor.BuildRequestURL(info)
+				require.NoError(t, err)
+				assert.Equal(t, "https://ai.ctaigw.cn/v1/contents/generations/tasks", url)
+				assert.NotContains(t, url, "/api/v3/")
+				facts, err := adaptor.ExtractUsageFactsValidated(c, info)
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantTokens, facts["tokens"])
+				assert.Equal(t, tc.wantResolution, facts["resolution"])
+				assert.Equal(t, "video", facts["video_input"])
+				// Reservation defaults must not mutate the body used for submission.
+				reader, err = adaptor.BuildRequestBody(c, info)
+				require.NoError(t, err)
+				encoded, err = io.ReadAll(reader)
+				require.NoError(t, err)
+				require.NoError(t, common.Unmarshal(encoded, &body))
+				assert.Equal(t, alibabaObject(t, want), body)
+			})
+		}
 	}
 
 	ctx := map[string]any{"model": ctyunModel, "upstreamModel": ctyunModel, "baseUrl": "https://ai.ctaigw.cn/v1/", "apiKey": "test-key", "taskId": "cgt-test",
@@ -367,14 +401,17 @@ func TestCTYunValidation(t *testing.T) {
 		request   map[string]any
 		wantError string
 	}{
-		{"missing duration", ctyunModel, map[string]any{"resolution": "720p"}, "duration or seconds is required"},
-		{"missing resolution", ctyunModel, map[string]any{"seconds": 11}, "resolution or size is required"},
 		{"zero", ctyunModel, map[string]any{"seconds": 0, "resolution": "720p"}, "duration must be an integer"},
+		{"automatic duration", ctyunModel, map[string]any{"seconds": -1}, "duration must be an integer"},
+		{"null duration", ctyunModel, map[string]any{"duration": nil}, "duration must be an integer"},
+		{"empty duration", ctyunModel, map[string]any{"duration": ""}, "duration must be an integer"},
 		{"fraction", ctyunModel, map[string]any{"seconds": 1.5, "resolution": "720p"}, "duration must be an integer"},
 		{"overflow", ctyunModel, map[string]any{"metadata": map[string]any{"duration": relaycommon.MaxTaskDurationSeconds + 1, "resolution": "720p"}}, "duration must be an integer"},
 		{"conflicting duration", ctyunModel, map[string]any{"seconds": 11, "metadata": map[string]any{"duration": 5, "resolution": "720p"}}, "conflicting duration"},
 		{"conflicting resolution", ctyunModel, map[string]any{"seconds": 11, "size": "1920x1080", "metadata": map[string]any{"resolution": "720p"}}, "conflicting resolution"},
 		{"bad size", ctyunModel, map[string]any{"seconds": 11, "size": "bad"}, "resolution must be"},
+		{"null resolution", ctyunModel, map[string]any{"resolution": nil}, "resolution must be"},
+		{"empty resolution", ctyunModel, map[string]any{"resolution": ""}, "resolution must be"},
 		{"fast 1080p", "cdance2.0-fast-0807", map[string]any{"seconds": 11, "resolution": "1080p"}, "resolution 1080p is not supported"},
 		{"2.5 4k", ctyunModel, map[string]any{"seconds": 11, "resolution": "4k"}, "resolution 4k is not supported"},
 		{"model case", "Cdance2.0-0807", map[string]any{"seconds": 11, "resolution": "720p"}, "unsupported CTYun model"},
@@ -421,7 +458,7 @@ func TestCTYunValidation(t *testing.T) {
 		{"seconds": []string{"11", "12"}, "size": []string{"720p"}},
 		{"seconds": []string{"3601"}, "size": []string{"720p"}},
 		{"seconds": []string{"11"}, "metadata": []string{`{"duration":0,"resolution":"720p"}`}},
-		{"seconds": []string{"11"}},
+		{"prompt": []string{"a cat"}, "seconds": []string{""}},
 	} {
 		_, err := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "decodeRequest"}, map[string]any{"model": ctyunModel, "body": map[string]any{"kind": "multipart", "fields": fields}})
 		require.Error(t, err)

@@ -33,7 +33,7 @@ export const meta = {
   key: "ctyun-cdance",
   name: "CTYun Cdance",
   icon: "text:CT",
-  version: "1.0.1",
+  version: "1.0.2",
   author: { name: "QuantumNous" },
   description: {
     en: "CTYun edge AI gateway Cdance / Seedance video generation",
@@ -102,7 +102,6 @@ function videoRequest(ctx, validateModel) {
     if (duration !== undefined && duration !== seconds) throw new Error("conflicting duration and seconds values");
     duration = seconds;
   }
-  if (duration === undefined) throw new Error("duration or seconds is required");
   let resolution;
   for (const value of [req.resolution, req.size, metadata.resolution]) {
     if (value === undefined) continue;
@@ -110,14 +109,14 @@ function videoRequest(ctx, validateModel) {
     if (resolution !== undefined && resolution !== normalized) throw new Error("conflicting resolution and size values");
     resolution = normalized;
   }
-  if (resolution === undefined) throw new Error("resolution or size is required");
   body.model = ctx.upstreamModel || req.model;
   if (validateModel) {
     if (!Object.prototype.hasOwnProperty.call(VIDEO_MODELS, body.model)) throw new Error("unsupported CTYun model: " + String(body.model));
-    if (!VIDEO_MODELS[body.model].includes(resolution)) throw new Error("resolution " + resolution + " is not supported by " + body.model);
+    if (resolution !== undefined && !VIDEO_MODELS[body.model].includes(resolution))
+      throw new Error("resolution " + resolution + " is not supported by " + body.model);
   }
-  body.duration = duration;
-  body.resolution = resolution;
+  if (duration !== undefined) body.duration = duration;
+  if (resolution !== undefined) body.resolution = resolution;
   delete body.seconds;
   delete body.video_input;
   if (body.content !== undefined && !Array.isArray(body.content)) throw new Error("content must be an array");
@@ -197,13 +196,16 @@ export function parseSubmitResponse(ctx, resp) {
 export function extractUsage(ctx) {
   const body = videoRequest(ctx, true);
   if (ctx.usagePurpose === "billing_ratios") return null;
-  const dimensions = { "480p": [854, 480], "720p": [1280, 720], "1080p": [1920, 1080], "4k": [3840, 2160] }[body.resolution];
+  // Omitted parameters stay absent upstream; these defaults only estimate the reservation.
+  const duration = body.duration === undefined ? 5 : body.duration;
+  const resolution = body.resolution === undefined ? "720p" : body.resolution;
+  const dimensions = { "480p": [854, 480], "720p": [1280, 720], "1080p": [1920, 1080], "4k": [3840, 2160] }[resolution];
   // CTYun final billing uses upstream usage tokens;
   // this value is reservation estimation only (Doubao's 24 fps formula).
-  const tokens = (body.duration * dimensions[0] * dimensions[1] * 24) / 1024;
+  const tokens = (duration * dimensions[0] * dimensions[1] * 24) / 1024;
   // The CTYun guide groups token usage by resolution and video input presence.
   const videoInput = body.content.some((item) => item && item.type === "video_url") ? "video" : "none";
-  return { tokens: tokens, resolution: body.resolution, video_input: videoInput };
+  return { tokens: tokens, resolution: resolution, video_input: videoInput };
 }
 
 export function buildQueryRequest(ctx) {

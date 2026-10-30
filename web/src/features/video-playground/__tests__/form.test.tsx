@@ -75,6 +75,17 @@ const moma: VideoModel = {
     duration_input_max: 15,
   },
 }
+const ctyun: VideoModel = {
+  ...millu,
+  plugin_key: 'ctyun-cdance',
+  model: 'cdance2.5-0807',
+  display_name: 'CTYun Cdance',
+  plugin_version: '1.0.2',
+  capabilities: {
+    ...millu.capabilities,
+    resolutions: ['480p', '720p', '1080p'],
+  },
+}
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -149,12 +160,44 @@ describe('video generation form', () => {
     expect(request.media).toEqual([])
   })
 
-  test('CTYun requires duration and resolution before the charge confirmation', async () => {
-    renderForm({
-      ...millu,
+  test('CTYun can confirm and submit with upstream duration and resolution defaults', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        data: { task_id: 'task_public', state: 'accepted' },
+      },
+    })
+    renderForm(ctyun)
+    expect(screen.getByLabelText('Duration (seconds)')).toHaveAttribute(
+      'placeholder',
+      'Use upstream default'
+    )
+    expect(screen.getByLabelText('Resolution')).toHaveValue('')
+    expect(
+      within(screen.getByLabelText('Resolution')).getByRole('option', {
+        name: 'Use upstream default',
+      })
+    ).toHaveValue('')
+    fireEvent.click(await openGenerationConfirmation())
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(post.mock.calls[0][0]).toBe('/pg/video/tasks')
+    const payload = post.mock.calls[0][1] as VideoRequest
+    expect(payload).toMatchObject({
       plugin_key: 'ctyun-cdance',
+      model: 'cdance2.5-0807',
+    })
+    expect(payload.parameters).toEqual({})
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+  })
+
+  test('legacy CTYun requires duration and resolution before the charge confirmation', async () => {
+    renderForm({
+      ...ctyun,
+      plugin_version: '1.0.1',
       capabilities: {
-        ...millu.capabilities,
+        ...ctyun.capabilities,
         duration_required: true,
         resolution_required: true,
       },
