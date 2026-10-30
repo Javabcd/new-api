@@ -91,10 +91,11 @@ test('switching from a failed video to a cached healthy task displays its player
     'src',
     '/api/task/task_failed/artifacts/video/content'
   )
+  Object.defineProperty(failedVideo, 'error', { value: { code: 3 } })
   fireEvent.error(failedVideo as HTMLVideoElement)
-  expect(
-    screen.getByText('Media preview failed. Please try again.')
-  ).toBeVisible()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Your browser could not decode this video or does not support its format. Download it and open it in a compatible player.'
+  )
   fireEvent.click(previews[1])
   await waitFor(() =>
     expect(view.container.querySelector('video')).toHaveAttribute(
@@ -102,7 +103,5 @@ test('switching from a failed video to a cached healthy task displays its player
       '/api/task/task_healthy/artifacts/video/content'
     )
   )
-  expect(
-    screen.queryByText('Media preview failed. Please try again.')
-  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

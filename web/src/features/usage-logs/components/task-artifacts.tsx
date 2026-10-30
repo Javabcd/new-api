@@ -139,10 +139,17 @@ function LegacyAudioPreview(props: { taskId: string }) {
   )
 }
 
+type MediaFailureKind = 'load' | 'decode'
+
+function videoPreviewFailure(error: MediaError | null): MediaFailureKind {
+  if (error?.code === 3 || error?.code === 4) return 'decode'
+  return 'load'
+}
+
 function ArtifactMedia(props: {
   artifact: TaskArtifact
   mediaUrl: string
-  onError: () => void
+  onError: (kind: MediaFailureKind) => void
 }) {
   if (props.artifact.type === 'image') {
     return (
@@ -151,7 +158,7 @@ function ArtifactMedia(props: {
         alt={props.artifact.key}
         loading='lazy'
         className='max-h-[60vh] w-full rounded-md object-contain'
-        onError={props.onError}
+        onError={() => props.onError('load')}
       />
     )
   }
@@ -162,7 +169,9 @@ function ArtifactMedia(props: {
         controls
         preload='metadata'
         className='max-h-[60vh] w-full rounded-md bg-black'
-        onError={props.onError}
+        onError={(event) =>
+          props.onError(videoPreviewFailure(event.currentTarget.error))
+        }
       />
     )
   }
@@ -173,20 +182,80 @@ function ArtifactMedia(props: {
         controls
         preload='none'
         className='w-full'
-        onError={props.onError}
+        onError={() => props.onError('load')}
       />
     )
   }
   return null
 }
 
-function MediaFailure(props: { onRetry: () => void }) {
+function ArtifactDownloadButton(props: {
+  contentUrl: string
+  filename: string
+  className?: string
+}) {
   const { t } = useTranslation()
+  return (
+    <Button
+      variant='outline'
+      size='sm'
+      className={props.className}
+      nativeButton={false}
+      render={
+        <a
+          href={props.contentUrl}
+          download={props.filename}
+          target='_blank'
+          rel='noopener noreferrer'
+        />
+      }
+    >
+      <HugeiconsIcon
+        icon={Download01Icon}
+        strokeWidth={2}
+        data-icon='inline-start'
+      />
+      {t('Download')}
+    </Button>
+  )
+}
+
+function MediaFailure(props: {
+  kind: MediaFailureKind
+  onRetry: () => void
+  downloadUrl?: string
+}) {
+  const { t } = useTranslation()
+  const decodeFailed = props.kind === 'decode'
+  let downloadUrl: URL | undefined
+  if (decodeFailed && props.downloadUrl) {
+    downloadUrl = new URL(props.downloadUrl)
+    downloadUrl.searchParams.set('download', '1')
+  }
   return (
     <Alert variant='destructive'>
       <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden='true' />
-      <AlertTitle>{t('Media preview failed. Please try again.')}</AlertTitle>
-      <AlertDescription>{t('Preview unavailable')}</AlertDescription>
+      <AlertTitle>
+        {decodeFailed
+          ? t('Preview unavailable')
+          : t('Media preview failed. Please try again.')}
+      </AlertTitle>
+      <AlertDescription>
+        <span className='block'>
+          {decodeFailed
+            ? t(
+                'Your browser could not decode this video or does not support its format. Download it and open it in a compatible player.'
+              )
+            : t('Preview unavailable')}
+        </span>
+        {downloadUrl ? (
+          <ArtifactDownloadButton
+            contentUrl={downloadUrl.toString()}
+            filename='video'
+            className='mt-2 max-w-full'
+          />
+        ) : null}
+      </AlertDescription>
       <AlertAction>
         <Button
           type='button'
@@ -208,7 +277,9 @@ function MediaFailure(props: { onRetry: () => void }) {
 
 function TaskArtifactCard(props: { artifact: TaskArtifact }) {
   const { t } = useTranslation()
-  const [mediaFailed, setMediaFailed] = useState(false)
+  const [mediaFailure, setMediaFailure] = useState<MediaFailureKind | null>(
+    null
+  )
   const [mediaRevision, setMediaRevision] = useState(0)
   const icon = artifactIcon(props.artifact.type)
   const isVisualArtifact =
@@ -224,11 +295,12 @@ function TaskArtifactCard(props: { artifact: TaskArtifact }) {
       <HugeiconsIcon icon={icon} className='size-6' strokeWidth={1.5} />
     </div>
   )
-  if (mediaFailed) {
+  if (mediaFailure) {
     cardContent = (
       <MediaFailure
+        kind={mediaFailure}
         onRetry={() => {
-          setMediaFailed(false)
+          setMediaFailure(null)
           setMediaRevision((revision) => revision + 1)
         }}
       />
@@ -239,7 +311,7 @@ function TaskArtifactCard(props: { artifact: TaskArtifact }) {
         key={mediaRevision}
         artifact={props.artifact}
         mediaUrl={props.artifact.content_url}
-        onError={() => setMediaFailed(true)}
+        onError={setMediaFailure}
       />
     )
   }
@@ -271,26 +343,10 @@ function TaskArtifactCard(props: { artifact: TaskArtifact }) {
       </CardHeader>
       <CardContent>{cardContent}</CardContent>
       <CardFooter>
-        <Button
-          variant='outline'
-          size='sm'
-          nativeButton={false}
-          render={
-            <a
-              href={props.artifact.content_url}
-              download={props.artifact.key}
-              target='_blank'
-              rel='noopener noreferrer'
-            />
-          }
-        >
-          <HugeiconsIcon
-            icon={Download01Icon}
-            strokeWidth={2}
-            data-icon='inline-start'
-          />
-          {t('Download')}
-        </Button>
+        <ArtifactDownloadButton
+          contentUrl={props.artifact.content_url}
+          filename={props.artifact.key}
+        />
       </CardFooter>
     </Card>
   )
@@ -375,7 +431,10 @@ export function TaskArtifacts(props: TaskArtifactsProps) {
       )}
     >
       {artifactsQuery.data.artifacts.map((artifact) => (
-        <TaskArtifactCard key={artifact.key} artifact={artifact} />
+        <TaskArtifactCard
+          key={`${props.taskId}:${artifact.key}:${artifact.type}:${artifact.content_url}`}
+          artifact={artifact}
+        />
       ))}
     </div>
   )
@@ -398,7 +457,12 @@ function EmptyTaskArtifacts() {
 
 function LegacyTaskArtifacts(props: { legacyContentUrl?: string }) {
   if (props.legacyContentUrl) {
-    return <LegacyVideoMedia contentUrl={props.legacyContentUrl} />
+    return (
+      <LegacyVideoMedia
+        key={props.legacyContentUrl}
+        contentUrl={props.legacyContentUrl}
+      />
+    )
   }
   return <EmptyTaskArtifacts />
 }
@@ -501,13 +565,17 @@ interface LegacyVideoMediaProps {
 }
 
 function LegacyVideoMedia(props: LegacyVideoMediaProps) {
-  const [mediaFailed, setMediaFailed] = useState(false)
+  const [mediaFailure, setMediaFailure] = useState<MediaFailureKind | null>(
+    null
+  )
   const [mediaRevision, setMediaRevision] = useState(0)
 
-  return mediaFailed ? (
+  return mediaFailure ? (
     <MediaFailure
+      kind={mediaFailure}
+      downloadUrl={props.contentUrl}
       onRetry={() => {
-        setMediaFailed(false)
+        setMediaFailure(null)
         setMediaRevision((revision) => revision + 1)
       }}
     />
@@ -518,7 +586,9 @@ function LegacyVideoMedia(props: LegacyVideoMediaProps) {
       controls
       preload='metadata'
       className='max-h-[60vh] w-full rounded-md bg-black'
-      onError={() => setMediaFailed(true)}
+      onError={(event) =>
+        setMediaFailure(videoPreviewFailure(event.currentTarget.error))
+      }
     />
   )
 }

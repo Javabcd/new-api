@@ -143,6 +143,7 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 			message: "Artifact content is no longer available",
 		}
 	}
+	download := c.Query("download") == "1" && legacyVideoAvailable(task)
 	if strings.HasPrefix(rawURL, "data:") {
 		if len(rawURL) > taskMediaDataURLMaxEncodedBytes {
 			return &taskMediaProxyError{
@@ -150,7 +151,7 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 				message: "Artifact request was rejected", err: errTaskMediaRequestRejected,
 			}
 		}
-		if err := writeVideoDataURL(c, rawURL); err != nil {
+		if err := writeVideoDataURL(c, rawURL, download); err != nil {
 			return &taskMediaProxyError{
 				status: http.StatusBadGateway, code: "artifact_upstream_error",
 				message: "Failed to decode artifact content", err: err,
@@ -283,6 +284,9 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified, http.StatusRequestedRangeNotSatisfiable:
 		copyTaskMediaResponseHeaders(c.Writer.Header(), resp.Header)
 		setTaskMediaResponseSecurityHeaders(c.Writer.Header())
+		if download && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent) {
+			c.Header("Content-Disposition", `attachment; filename="video"`)
+		}
 		c.Status(resp.StatusCode)
 		c.Writer.WriteHeaderNow()
 		if c.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNotModified {
@@ -571,17 +575,15 @@ func writeTaskMediaProxyError(c *gin.Context, err error) {
 	writeTaskArtifactError(c, proxyErr.status, proxyErr.code, proxyErr.message)
 }
 
-func writeVideoDataURL(c *gin.Context, dataURL string) error {
+func writeVideoDataURL(c *gin.Context, dataURL string, download bool) error {
 	if len(dataURL) > taskMediaDataURLMaxEncodedBytes {
 		return errTaskMediaRequestRejected
 	}
-	parts := strings.SplitN(dataURL, ",", 2)
-	if len(parts) != 2 {
+	header, payload, ok := strings.Cut(dataURL, ",")
+	if !ok {
 		return fmt.Errorf("invalid data url")
 	}
 
-	header := parts[0]
-	payload := parts[1]
 	if !strings.HasPrefix(header, "data:") || !strings.Contains(header, ";base64") {
 		return fmt.Errorf("unsupported data url")
 	}
@@ -612,6 +614,9 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	c.Writer.Header().Set("Content-Type", mimeType)
 	c.Writer.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
 	setTaskMediaResponseSecurityHeaders(c.Writer.Header())
+	if download {
+		c.Header("Content-Disposition", `attachment; filename="video"`)
+	}
 	c.Writer.WriteHeader(http.StatusOK)
 	if c.Request.Method == http.MethodHead {
 		return nil

@@ -170,6 +170,48 @@ test('video generation links to the signed-in video API documentation', async ({
   ).toBeVisible()
 })
 
+test('an unsupported video shows a readable hint and reachable actions on a narrow screen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 })
+  const contentUrl = `http://127.0.0.1:4173/v1/tasks/task-1/artifacts/video/content?access=${'A'.repeat(43)}`
+  await page.route('**/api/task/task-1/artifacts', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          artifacts: [{ key: 'video', type: 'video', content_url: contentUrl }],
+        },
+      },
+    })
+  )
+  await page.route('**/v1/tasks/task-1/artifacts/video/content**', (route) =>
+    route.fulfill({ contentType: 'video/mp4', body: 'unsupported video' })
+  )
+  await page.goto('/video-playground')
+  await page
+    .getByRole('button', { name: 'Preview', exact: true })
+    .first()
+    .click()
+
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText(
+    'Your browser could not decode this video or does not support its format.'
+  )
+  const download = page.getByRole('button', { name: 'Download', exact: true })
+  await download.scrollIntoViewIfNeeded()
+  await expect(download).toBeInViewport({ ratio: 1 })
+  await expect(download).toHaveAttribute('href', contentUrl)
+  const retry = alert.getByRole('button', { name: 'Retry', exact: true })
+  await retry.scrollIntoViewIfNeeded()
+  await expect(retry).toBeInViewport({ ratio: 1 })
+  expect(
+    await alert.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth
+    )
+  ).toBe(true)
+})
+
 for (const viewport of [
   { width: 1280, height: 480 },
   { width: 390, height: 480 },

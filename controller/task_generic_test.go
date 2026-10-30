@@ -350,6 +350,145 @@ func TestLegacyVideoArtifactContentUsesGetResultURL(t *testing.T) {
 	assert.Equal(t, "bytes 0-3/4", recorder.Header().Get("Content-Range"))
 }
 
+func TestLegacyVideoArtifactContentDownload(t *testing.T) {
+	const attachment = `attachment; filename="video"`
+	for _, tc := range []struct {
+		name                string
+		method              string
+		query               string
+		dataURL             string
+		upstreamStatus      int
+		upstreamDisposition string
+		rangeHeader         string
+		wantStatus          int
+		wantDisposition     string
+		wantBody            string
+		wantErrorCode       string
+	}{
+		{
+			name: "download without upstream disposition", method: http.MethodGet, query: "download=1",
+			upstreamStatus: http.StatusOK, wantStatus: http.StatusOK, wantDisposition: attachment, wantBody: "data",
+		},
+		{
+			name: "download overrides upstream inline disposition", method: http.MethodGet, query: "download=1",
+			upstreamStatus: http.StatusOK, upstreamDisposition: `inline; filename="upstream.mov"`,
+			wantStatus: http.StatusOK, wantDisposition: attachment, wantBody: "data",
+		},
+		{
+			name: "preview preserves upstream disposition", method: http.MethodGet,
+			upstreamStatus: http.StatusOK, upstreamDisposition: `inline; filename="upstream.mov"`,
+			wantStatus: http.StatusOK, wantDisposition: `inline; filename="upstream.mov"`, wantBody: "data",
+		},
+		{
+			name: "zero download flag keeps preview behavior", method: http.MethodGet, query: "download=0",
+			upstreamStatus: http.StatusOK, wantStatus: http.StatusOK, wantBody: "data",
+		},
+		{
+			name: "download preserves range response", method: http.MethodGet, query: "download=1", rangeHeader: "bytes=0-3",
+			upstreamStatus: http.StatusPartialContent, wantStatus: http.StatusPartialContent, wantDisposition: attachment, wantBody: "data",
+		},
+		{
+			name: "head download returns headers without body", method: http.MethodHead, query: "download=1",
+			upstreamStatus: http.StatusOK, wantStatus: http.StatusOK, wantDisposition: attachment,
+		},
+		{
+			name: "not modified response does not become an attachment", method: http.MethodGet, query: "download=1",
+			upstreamStatus: http.StatusNotModified, wantStatus: http.StatusNotModified,
+		},
+		{
+			name: "unsatisfied range does not become an attachment", method: http.MethodGet, query: "download=1", rangeHeader: "bytes=10-13",
+			upstreamStatus: http.StatusRequestedRangeNotSatisfiable, wantStatus: http.StatusRequestedRangeNotSatisfiable,
+		},
+		{
+			name: "upstream failure keeps its JSON error", method: http.MethodGet, query: "download=1",
+			upstreamStatus: http.StatusNotFound, wantStatus: http.StatusNotFound, wantErrorCode: "artifact_not_found",
+		},
+		{
+			name: "data URL download streams decoded bytes", method: http.MethodGet, query: "download=1",
+			dataURL: "data:video/mp4;base64,ZGF0YQ==", wantStatus: http.StatusOK, wantDisposition: attachment, wantBody: "data",
+		},
+		{
+			name: "data URL head download has no body", method: http.MethodHead, query: "download=1",
+			dataURL: "data:video/mp4;base64,ZGF0YQ==", wantStatus: http.StatusOK, wantDisposition: attachment,
+		},
+		{
+			name: "invalid data URL keeps its JSON error", method: http.MethodGet, query: "download=1",
+			dataURL: "data:video/mp4;base64,invalid!", wantStatus: http.StatusNotFound, wantErrorCode: "artifact_not_found",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			task := setupGenericTaskTest(t)
+			allowPrivateTaskMediaTest(t)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tc.method, r.Method)
+				assert.Equal(t, tc.rangeHeader, r.Header.Get("Range"))
+				assert.Empty(t, r.URL.RawQuery)
+				w.Header().Set("Content-Type", "video/mp4")
+				if tc.upstreamDisposition != "" {
+					w.Header().Set("Content-Disposition", tc.upstreamDisposition)
+				}
+				switch tc.upstreamStatus {
+				case http.StatusOK, http.StatusPartialContent:
+					w.Header().Set("Content-Length", "4")
+					if tc.upstreamStatus == http.StatusPartialContent {
+						w.Header().Set("Content-Range", "bytes 0-3/4")
+					}
+					w.WriteHeader(tc.upstreamStatus)
+					_, _ = w.Write([]byte("data"))
+				case http.StatusRequestedRangeNotSatisfiable:
+					w.Header().Set("Content-Range", "bytes */4")
+					w.WriteHeader(tc.upstreamStatus)
+				default:
+					w.WriteHeader(tc.upstreamStatus)
+				}
+			}))
+			defer upstream.Close()
+			task.Action = constant.TaskActionTextToVideo
+			task.PrivateData.ResultURL = upstream.URL
+			if tc.dataURL != "" {
+				task.PrivateData.ResultURL = tc.dataURL
+			}
+			require.NoError(t, model.DB.Save(task).Error)
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set(middleware.TaskArtifactAccessContextKey, true)
+			c.Params = gin.Params{{Key: "key", Value: task.TaskID}, {Key: "artifact_key", Value: "video"}}
+			c.Request = httptest.NewRequest(tc.method, "/v1/tasks/"+task.TaskID+"/artifacts/video/content?"+tc.query, nil)
+			if tc.rangeHeader != "" {
+				c.Request.Header.Set("Range", tc.rangeHeader)
+			}
+
+			TaskArtifactContent(c)
+
+			assert.Equal(t, tc.wantStatus, recorder.Code)
+			assert.Equal(t, tc.wantDisposition, recorder.Header().Get("Content-Disposition"))
+			assert.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
+			if tc.wantErrorCode != "" {
+				var response struct {
+					Error struct {
+						Code string `json:"code"`
+					} `json:"error"`
+				}
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				assert.Equal(t, tc.wantErrorCode, response.Error.Code)
+				return
+			}
+			assert.Equal(t, tc.wantBody, recorder.Body.String())
+			if tc.wantStatus == http.StatusOK || tc.wantStatus == http.StatusPartialContent {
+				assert.Equal(t, "4", recorder.Header().Get("Content-Length"))
+				assert.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
+			}
+			if tc.wantStatus == http.StatusPartialContent {
+				assert.Equal(t, "bytes 0-3/4", recorder.Header().Get("Content-Range"))
+			}
+			if tc.wantStatus == http.StatusRequestedRangeNotSatisfiable {
+				assert.Equal(t, "bytes */4", recorder.Header().Get("Content-Range"))
+			}
+		})
+	}
+}
+
 func TestDisabledArtifactStorePreservesPluginUpstreamContent(t *testing.T) {
 	task := setupGenericTaskTest(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -530,7 +669,7 @@ func TestWriteVideoDataURLStreamsAndSupportsHead(t *testing.T) {
 	getRecorder := httptest.NewRecorder()
 	getContext, _ := gin.CreateTestContext(getRecorder)
 	getContext.Request = httptest.NewRequest(http.MethodGet, "/content", nil)
-	require.NoError(t, writeVideoDataURL(getContext, dataURL))
+	require.NoError(t, writeVideoDataURL(getContext, dataURL, false))
 	assert.Equal(t, http.StatusOK, getRecorder.Code)
 	assert.Equal(t, "complete-body", getRecorder.Body.String())
 	assert.Equal(t, "13", getRecorder.Header().Get("Content-Length"))
@@ -538,7 +677,7 @@ func TestWriteVideoDataURLStreamsAndSupportsHead(t *testing.T) {
 	headRecorder := httptest.NewRecorder()
 	headContext, _ := gin.CreateTestContext(headRecorder)
 	headContext.Request = httptest.NewRequest(http.MethodHead, "/content", nil)
-	require.NoError(t, writeVideoDataURL(headContext, dataURL))
+	require.NoError(t, writeVideoDataURL(headContext, dataURL, false))
 	assert.Equal(t, http.StatusOK, headRecorder.Code)
 	assert.Empty(t, headRecorder.Body.String())
 	assert.Equal(t, "13", headRecorder.Header().Get("Content-Length"))
@@ -553,7 +692,7 @@ func TestWriteVideoDataURLRejectsOversizedPayloadBeforeDecode(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/content", nil)
 
-	err := writeVideoDataURL(c, "data:video/mp4;base64,"+strings.Repeat("A", 64))
+	err := writeVideoDataURL(c, "data:video/mp4;base64,"+strings.Repeat("A", 64), false)
 
 	assert.ErrorIs(t, err, errTaskMediaRequestRejected)
 	assert.Empty(t, recorder.Header().Get("Content-Type"))
