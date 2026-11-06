@@ -90,6 +90,75 @@ async function openHome(page: Page, language: string) {
   ).toHaveCount(1)
 }
 
+for (const path of ['/', '/pricing']) {
+  test(`${path}: uses the Chinese brand in the browser tab after loading and reloading AIMXY status`, async ({
+    page,
+  }) => {
+    await page.route('**/api/status', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            system_name: 'AIMXY',
+            HeaderNavModules: {
+              pricing: { enabled: true, requireAuth: false },
+            },
+          },
+        },
+      })
+    )
+    await page.goto(path)
+    await expect(page).toHaveTitle('麦小云')
+    await expect(page.locator('meta[name="title"]')).toHaveAttribute(
+      'content',
+      '麦小云'
+    )
+    await page.reload()
+    await expect(page).toHaveTitle('麦小云')
+    await expect(page.locator('meta[name="title"]')).toHaveAttribute(
+      'content',
+      '麦小云'
+    )
+  })
+}
+
+test('uses the Chinese brand in the browser tab from cached AIMXY status when the refresh fails', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('newapi:default:cache-version', 'default-v1')
+    localStorage.setItem('status', JSON.stringify({ system_name: 'AIMXY' }))
+  })
+  await page.route('**/api/status', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { success: false, message: 'Unavailable' },
+    })
+  )
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page).toHaveTitle('麦小云')
+  await expect(page.locator('meta[name="title"]')).toHaveAttribute(
+    'content',
+    '麦小云'
+  )
+})
+
+test('keeps a different configured site name in the browser tab', async ({
+  page,
+}) => {
+  await page.route('**/api/status', (route) =>
+    route.fulfill({
+      json: { success: true, data: { system_name: 'Configured site' } },
+    })
+  )
+  await page.goto('/')
+  await expect(page).toHaveTitle('Configured site')
+  await expect(page.locator('meta[name="title"]')).toHaveAttribute(
+    'content',
+    'Configured site'
+  )
+})
+
 for (const language of languages) {
   const widths = ['en', 'fr', 'ru'].includes(language.code)
     ? [320, 374, 375, 390]
