@@ -90,8 +90,13 @@ async function openHome(page: Page, language: string) {
   ).toHaveCount(1)
 }
 
-for (const path of ['/', '/pricing']) {
-  test(`${path}: uses the Chinese brand in the browser tab after loading and reloading AIMXY status`, async ({
+for (const [path, systemName] of [
+  ['/', 'AIMXY'],
+  ['/pricing', 'AIMXY'],
+  ['/', '麦小云'],
+  ['/pricing', '麦小云'],
+]) {
+  test(`${path}: uses the website title in the browser tab after loading and reloading ${systemName} status`, async ({
     page,
   }) => {
     await page.route('**/api/status', (route) =>
@@ -99,7 +104,7 @@ for (const path of ['/', '/pricing']) {
         json: {
           success: true,
           data: {
-            system_name: 'AIMXY',
+            system_name: systemName,
             HeaderNavModules: {
               pricing: { enabled: true, requireAuth: false },
             },
@@ -108,16 +113,16 @@ for (const path of ['/', '/pricing']) {
       })
     )
     await page.goto(path)
-    await expect(page).toHaveTitle('麦小云')
+    await expect(page).toHaveTitle('麦小云官网')
     await expect(page.locator('meta[name="title"]')).toHaveAttribute(
       'content',
-      '麦小云'
+      '麦小云官网'
     )
     await page.reload()
-    await expect(page).toHaveTitle('麦小云')
+    await expect(page).toHaveTitle('麦小云官网')
     await expect(page.locator('meta[name="title"]')).toHaveAttribute(
       'content',
-      '麦小云'
+      '麦小云官网'
     )
   })
 }
@@ -136,10 +141,10 @@ test('uses the Chinese brand in the browser tab from cached AIMXY status when th
     })
   )
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await expect(page).toHaveTitle('麦小云')
+  await expect(page).toHaveTitle('麦小云官网')
   await expect(page.locator('meta[name="title"]')).toHaveAttribute(
     'content',
-    '麦小云'
+    '麦小云官网'
   )
 })
 

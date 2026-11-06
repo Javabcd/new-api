@@ -48,6 +48,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getSiteDisplayName } from '@/features/marketing/brand'
 import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -128,7 +129,7 @@ export function PublicHeader(props: PublicHeaderProps) {
 
   const user = auth.user
   const isAuthenticated = !!user
-  const displaySiteName = customSiteName || systemName
+  const displaySiteName = customSiteName || getSiteDisplayName(systemName)
   const links = dynamicLinks.length > 0 || marketing ? dynamicLinks : navLinks
 
   const marketingLinks = [

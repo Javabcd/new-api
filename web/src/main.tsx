@@ -21,7 +21,7 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 
-import { MARKETING_BRAND } from '@/features/marketing/brand'
+import { getSiteDisplayName } from '@/features/marketing/brand'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
@@ -73,8 +73,7 @@ if (!rootElement) {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const apply = (name: string) => {
-      const title =
-        name === MARKETING_BRAND.subtitle ? MARKETING_BRAND.name : name
+      const title = getSiteDisplayName(name)
       document.title = title
       const metaTitle = document.querySelector(
         'meta[name="title"]'

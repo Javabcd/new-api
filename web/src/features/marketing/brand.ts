@@ -18,11 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export const MARKETING_BRAND = {
   name: '麦小云',
+  documentTitle: '麦小云官网',
   subtitle: 'AIMXY',
   logo: '/maixiaoyun/logo.svg',
   phone: '13858791566',
   email: '13858791566@139.com',
 } as const
+
+export function getSiteDisplayName(name: string): string {
+  if (name === MARKETING_BRAND.subtitle || name === MARKETING_BRAND.name) {
+    return MARKETING_BRAND.documentTitle
+  }
+  return name
+}
 
 export const FEATURED_MODEL_NAMES = [
   'gpt-5.6-sol',

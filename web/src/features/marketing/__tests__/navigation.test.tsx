@@ -29,6 +29,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
+import { SystemBrand } from '@/components/layout/components/system-brand'
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { AuthLayout } from '@/features/auth/auth-layout'
 import { MarketingFooter } from '@/features/marketing/marketing-footer'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -116,6 +119,50 @@ it('keeps the configured brand on other public pages', async () => {
   expect(await screen.findByText('Existing site')).toBeVisible()
   expect(screen.queryByText('麦小云')).not.toBeInTheDocument()
 })
+
+it('shows the website name in the public header when the configured system name is AIMXY', async () => {
+  useSystemConfigStore.getState().setConfig({ systemName: 'AIMXY' })
+  await renderNavigation(
+    <PublicLayout
+      showThemeSwitch={false}
+      showNotifications={false}
+      showAuthButtons={false}
+    >
+      <p>Content</p>
+    </PublicLayout>
+  )
+  const header = within(screen.getByRole('banner'))
+  expect(header.getByText('麦小云官网')).toBeVisible()
+  expect(header.queryByText('AIMXY')).not.toBeInTheDocument()
+})
+
+it('shows the website name in the authentication layout when the configured system name is AIMXY', async () => {
+  useSystemConfigStore.getState().setConfig({ systemName: 'AIMXY' })
+  await renderNavigation(
+    <AuthLayout>
+      <p>Content</p>
+    </AuthLayout>
+  )
+  expect(screen.getByRole('heading', { name: '麦小云官网' })).toBeVisible()
+  expect(screen.queryByText('AIMXY')).not.toBeInTheDocument()
+})
+
+it.each(['inline', 'sidebar'] as const)(
+  'shows the website name in the %s system brand when status supplies AIMXY',
+  async (variant) => {
+    client.setQueryData(['status'], {
+      system_name: 'AIMXY',
+      version: 'test-version',
+    })
+    await renderNavigation(
+      <SidebarProvider>
+        <SystemBrand variant={variant} />
+      </SidebarProvider>
+    )
+    expect(screen.getByText('麦小云官网')).toBeVisible()
+    expect(screen.queryByText('AIMXY')).not.toBeInTheDocument()
+  }
+)
 
 it('groups home utility controls behind one trigger and restores focus after Escape', async () => {
   const user = userEvent.setup()
