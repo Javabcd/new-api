@@ -30,6 +30,7 @@
     "[{\"name\":\"支付宝\",\"type\":\"alipay\",\"color\":\"#1677FF\"}]": "[{\"name\":\"Alipay\",\"type\":\"alipay\",\"color\":\"#1677FF\"}]",
     "[{\"name\":\"支付宝\",\"type\":\"alipay\",\"icon\":\"SiAlipay\"}]": "[{\"name\":\"Alipay\",\"type\":\"alipay\",\"icon\":\"SiAlipay\"}]",
     "{\"original-model\": \"replacement-model\"}": "{\"original-model\": \"replacement-model\"}",
+    "{{brand}} AIMXY brings <strong>leading AI models</strong> into one protocol: reasoning, image and video models, all behind one key. Change one <strong>base_url</strong> to move from conversation to creation, with unified access, billing and observability.": "{{brand}} AIMXY объединяет <strong>ведущие модели ИИ</strong> в одном протоколе: рассуждения, изображения и видео доступны с одним ключом. Измените <strong>base_url</strong>, чтобы перейти от диалога к созданию контента с единой авторизацией, оплатой и мониторингом.",
     "{{bytes}} bytes": "{{bytes}} байт",
     "{{category}} Models": "Модели {{category}}",
     "{{channels}} channels, {{tasks}} in-flight tasks": "Каналов: {{channels}}, активных задач: {{tasks}}",

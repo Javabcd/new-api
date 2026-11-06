@@ -509,6 +509,8 @@ For commercial licensing, please contact support@quantumnous.com
 @media (max-width: 620px) {
   .mxy-reference .mxy-mobile-nav {
     gap: 6px;
+    min-width: 0;
+    flex-shrink: 1;
   }
   .mxy-reference .mxy-home-login {
     padding-inline: 6px;
@@ -517,6 +519,10 @@ For commercial licensing, please contact support@quantumnous.com
   .mxy-reference .mxy-mobile-nav .mxy-button-small {
     padding-inline: 12px;
     font-size: 13px;
+    min-width: 0;
+    flex-shrink: 1;
+    white-space: normal;
+    line-height: 1.2;
   }
   .mxy-reference:not(:lang(zh)) .mxy-mobile-nav > .mxy-home-login {
     display: none;

@@ -167,7 +167,7 @@ test('keeps a different configured site name in the browser tab', async ({
 for (const language of languages) {
   const widths = ['en', 'fr', 'ru'].includes(language.code)
     ? [320, 374, 375, 390]
-    : [320]
+    : [320, 375]
 
   for (const width of widths) {
     test(`${width}px ${language.code}: keeps the menu and account links accessible`, async ({
@@ -298,7 +298,8 @@ for (const path of ['/', '/pricing']) {
       await expect(update).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
       const brand = header.locator('.mxy-brand-name')
-      await expect(brand).toContainText('麦小云')
+      await expect(brand).toContainText('麦小云官网')
+      await expect(brand).toHaveAttribute('title', '麦小云官网')
       await expect
         .poll(() =>
           brand.evaluate(

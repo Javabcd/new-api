@@ -94,7 +94,7 @@ it('opens the marketing menu as a dialog and returns keyboard focus when Escape 
   )
   const trigger = screen.getByRole('button', { name: 'Toggle navigation menu' })
   await user.click(trigger)
-  const menu = await screen.findByRole('dialog', { name: '麦小云' })
+  const menu = await screen.findByRole('dialog', { name: '麦小云官网' })
   expect(
     within(menu).getByRole('link', { name: 'Model Square' })
   ).toHaveAttribute('href', '/pricing')
@@ -117,7 +117,7 @@ it('keeps the configured brand on other public pages', async () => {
     </PublicLayout>
   )
   expect(await screen.findByText('Existing site')).toBeVisible()
-  expect(screen.queryByText('麦小云')).not.toBeInTheDocument()
+  expect(screen.queryByText('麦小云官网')).not.toBeInTheDocument()
 })
 
 it('shows the website name in the public header when the configured system name is AIMXY', async () => {
@@ -278,7 +278,7 @@ it('marks only the selected home anchor as current when navigating to core capab
   await user.click(
     screen.getByRole('button', { name: 'Toggle navigation menu' })
   )
-  const menu = await screen.findByRole('dialog', { name: '麦小云' })
+  const menu = await screen.findByRole('dialog', { name: '麦小云官网' })
   expect(
     within(menu).getByRole('link', { name: 'Core capabilities' })
   ).toHaveAttribute('aria-current', 'page')
@@ -307,6 +307,6 @@ it('anchors the home menu below the notice and reserves only the remaining viewp
   await user.click(
     screen.getByRole('button', { name: 'Toggle navigation menu' })
   )
-  const menu = await screen.findByRole('dialog', { name: '麦小云' })
+  const menu = await screen.findByRole('dialog', { name: '麦小云官网' })
   expect(menu).toHaveStyle({ top: '118px', maxHeight: 'calc(100dvh - 118px)' })
 })

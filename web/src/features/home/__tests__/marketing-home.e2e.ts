@@ -133,7 +133,9 @@ for (const anchor of [
   }) => {
     await page.setViewportSize({ width: 390, height: 900 })
     await page.goto('/')
-    const footer = page.getByRole('contentinfo')
+    const footer = page
+      .getByRole('contentinfo')
+      .filter({ has: page.locator('#contact') })
     await expect(footer).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
 
@@ -155,7 +157,9 @@ test.describe('custom footer contact anchors', () => {
 
       await page.goto(`/#${hash}`)
 
-      const footer = page.getByRole('contentinfo')
+      const footer = page
+        .getByRole('contentinfo')
+        .filter({ has: page.locator('#contact') })
       await expect(footer.getByText('Configured footer')).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
       await expectCompanyAnchorBelowHeader(page, hash)
@@ -174,6 +178,12 @@ for (const width of [390, 768, 1080, 1440]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')
+    await expect(
+      page.getByRole('banner').locator('.mxy-brand-name')
+    ).toHaveAttribute('title', '麦小云官网')
+    await expect(page.locator('#top .mxy-lead')).toContainText(
+      '麦小云官网 AIMXY'
+    )
     await expect(page.getByLabel('Token usage preview')).toBeVisible()
     await expect(page.getByLabel('Token usage preview')).toContainText(
       'Demo preview'
@@ -185,7 +195,12 @@ for (const width of [390, 768, 1080, 1440]) {
     await expect(
       page.getByRole('group', { name: 'Model results' }).getByRole('link')
     ).toHaveCount(3)
-    const footer = page.getByRole('contentinfo')
+    const footer = page
+      .getByRole('contentinfo')
+      .filter({ has: page.locator('#contact') })
+    await expect(
+      footer.getByRole('img', { name: '麦小云官网', exact: true })
+    ).toBeVisible()
     await expect(
       footer.getByRole('link', { name: '138 5879 1566' })
     ).toHaveAttribute('href', 'tel:13858791566')

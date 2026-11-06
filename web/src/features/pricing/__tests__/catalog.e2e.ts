@@ -425,7 +425,7 @@ test('390x480: reserves the remaining viewport for the menu and restores focus',
     exact: true,
   })
   await trigger.click()
-  const menu = page.getByRole('dialog', { name: '麦小云', exact: true })
+  const menu = page.getByRole('dialog', { name: '麦小云官网', exact: true })
   await expect(menu).toBeVisible()
   const bounds = await menu.boundingBox()
   if (!bounds) throw new Error('The mobile menu has no bounds')

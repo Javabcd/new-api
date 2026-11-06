@@ -21,6 +21,7 @@ import { useId } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
+import { MARKETING_BRAND } from '@/features/marketing/brand'
 import { MarketingActions } from '@/features/marketing/marketing-actions'
 import { ModelVendorIcon } from '@/features/marketing/model-vendor-icon'
 import { toIntlLocale } from '@/i18n/languages'
@@ -58,7 +59,8 @@ export function MarketingHero() {
           </h1>
           <p className='mxy-lead'>
             <Trans
-              i18nKey='Maixiaoyun AIMXY brings <strong>leading AI models</strong> into one protocol: reasoning, image and video models, all behind one key. Change one <strong>base_url</strong> to move from conversation to creation, with unified access, billing and observability.'
+              i18nKey='{{brand}} AIMXY brings <strong>leading AI models</strong> into one protocol: reasoning, image and video models, all behind one key. Change one <strong>base_url</strong> to move from conversation to creation, with unified access, billing and observability.'
+              values={{ brand: MARKETING_BRAND.name }}
               components={{ strong: <strong /> }}
             />
           </p>

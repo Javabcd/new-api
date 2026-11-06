@@ -30,6 +30,7 @@
     "[{\"name\":\"支付宝\",\"type\":\"alipay\",\"color\":\"#1677FF\"}]": "[{\"name\":\"支付寶\",\"type\":\"alipay\",\"color\":\"#1677FF\"}]",
     "[{\"name\":\"支付宝\",\"type\":\"alipay\",\"icon\":\"SiAlipay\"}]": "[{\"name\":\"支付寶\",\"type\":\"alipay\",\"icon\":\"SiAlipay\"}]",
     "{\"original-model\": \"replacement-model\"}": "{\"original-model\": \"replacement-model\"}",
+    "{{brand}} AIMXY brings <strong>leading AI models</strong> into one protocol: reasoning, image and video models, all behind one key. Change one <strong>base_url</strong> to move from conversation to creation, with unified access, billing and observability.": "{{brand}} AIMXY 將<strong>多家廠商的主流大模型</strong>收進同一套協定：能推理的文字模型、能作圖的圖像模型、能拍片的影片模型，都在同一個 Key 後面。改一行 <strong>base_url</strong>，業務就從「能對話」升級為「能生成」——統一驗證、統一計費、統一觀測。",
     "{{bytes}} bytes": "{{bytes}} 位元組",
     "{{category}} Models": "{{category}} 模型",
     "{{channels}} channels, {{tasks}} in-flight tasks": "{{channels}} 個渠道，{{tasks}} 個進行中任務",

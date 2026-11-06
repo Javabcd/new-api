@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 export const MARKETING_BRAND = {
-  name: '麦小云',
+  name: '麦小云官网',
   documentTitle: '麦小云官网',
   subtitle: 'AIMXY',
   logo: '/maixiaoyun/logo.svg',
@@ -26,7 +26,7 @@ export const MARKETING_BRAND = {
 } as const
 
 export function getSiteDisplayName(name: string): string {
-  if (name === MARKETING_BRAND.subtitle || name === MARKETING_BRAND.name) {
+  if (name === MARKETING_BRAND.subtitle || name === '麦小云') {
     return MARKETING_BRAND.documentTitle
   }
   return name
