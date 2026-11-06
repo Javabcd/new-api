@@ -245,40 +245,21 @@ for (const path of ['/', '/pricing']) {
   }
 }
 
-test.describe('multimodal card visibility', () => {
+test.describe('illustrated gateway capabilities', () => {
   test.use({
     reducedMotion: 'no-preference',
-    viewport: { width: 320, height: 240 },
+    viewport: { width: 320, height: 480 },
   })
-
-  test('320x240 English: reveals all five modality cards with normal motion', async ({
+  test('reveals gateway capabilities with normal motion without loading generation images', async ({
     page,
   }) => {
     await openHome(page, 'en')
-
-    const cards = page.locator('#modalities').getByRole('article')
-    await expect(cards).toHaveCount(5)
-
-    for (const card of await cards.all()) {
-      const heading = card.getByRole('heading', { level: 3 })
-      await heading.evaluate((element) =>
-        element.scrollIntoView({ block: 'center', behavior: 'instant' })
-      )
-      await expect(heading).toBeInViewport({ ratio: 1 })
-      await expect
-        .poll(() =>
-          card.evaluate((element) => {
-            for (
-              let current: Element | null = element;
-              current;
-              current = current.parentElement
-            ) {
-              if (getComputedStyle(current).opacity !== '1') return false
-            }
-            return true
-          })
-        )
-        .toBe(true)
+    const capabilities = page.locator('#ability .mxy-capability')
+    await expect(capabilities).toHaveCount(3)
+    await expect(page.locator('img[src*="/maixiaoyun/images/"]')).toHaveCount(0)
+    for (const capability of await capabilities.all()) {
+      await capability.scrollIntoViewIfNeeded()
+      await expect(capability).toHaveCSS('opacity', '1')
     }
   })
 })

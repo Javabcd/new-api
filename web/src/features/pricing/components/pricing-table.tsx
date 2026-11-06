@@ -32,6 +32,7 @@ import type { PricingModel, TokenUnit } from '../types'
 import { usePricingColumns } from './pricing-columns'
 
 export interface PricingTableProps {
+  presentation?: 'default' | 'reference'
   models: PricingModel[]
   isLoading?: boolean
   priceRate?: number
@@ -60,13 +61,21 @@ export function PricingTable(props: PricingTableProps) {
     pageSize: DEFAULT_PRICING_PAGE_SIZE,
   })
 
-  const columns = usePricingColumns({
+  const allColumns = usePricingColumns({
     tokenUnit,
     priceRate,
     usdExchangeRate,
     showRechargePrice,
     selectedGroup,
   })
+  const columns =
+    props.presentation === 'reference'
+      ? ['model_name', 'vendor_name', 'price', 'quota_type'].flatMap((key) =>
+          allColumns.filter(
+            (column) => 'accessorKey' in column && column.accessorKey === key
+          )
+        )
+      : allColumns
 
   const { table } = useDataTable({
     data: models,
@@ -109,7 +118,9 @@ export function PricingTable(props: PricingTableProps) {
         )}
       />
 
-      {!isLoading && models.length > 0 && <DataTablePagination table={table} />}
+      {props.presentation !== 'reference' &&
+        !isLoading &&
+        models.length > 0 && <DataTablePagination table={table} />}
     </div>
   )
 }

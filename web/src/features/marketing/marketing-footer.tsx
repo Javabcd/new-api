@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { Footer } from '@/components/layout/components/footer'
+import { MarketingCompany } from '@/features/home/components/marketing-company'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
 import { MARKETING_BRAND } from './brand'
@@ -37,17 +38,19 @@ export function MarketingFooter(props: {
             links: [
               ...navLinks
                 .filter((link) => link.href === '/pricing')
-                .map(() => ({ text: t('Model Square'), href: '/#models' })),
-              { text: t('Multimodal generation'), href: '/#modalities' },
-              { text: t('Core capabilities'), href: '/#capabilities' },
-              { text: t('Flexible access'), href: '/#pricing' },
+                .map(() => ({ text: t('Model Square'), href: '/#plaza' })),
+              { text: t('Core capabilities'), href: '/#ability' },
+              { text: t('Flexible access'), href: '/#price' },
+              ...navLinks
+                .filter((link) => link.href === '/rankings')
+                .map((link) => ({ text: link.title, href: link.href })),
             ],
           },
           {
             title: t('Developers'),
             links: [
               ...(docs ? [{ text: t('Documentation'), href: docs.href }] : []),
-              { text: t('Quick start'), href: '/#getting-started' },
+              { text: t('Quick start'), href: '/#dev' },
               { text: t('Console'), href: '/dashboard' },
             ],
           },
@@ -55,7 +58,7 @@ export function MarketingFooter(props: {
             title: t('Company'),
             links: [
               { text: t('About us'), href: '/#about' },
-              { text: t('Our capabilities'), href: '/#capabilities' },
+              { text: t('Our capabilities'), href: '/#ability' },
               { text: t('Service and reliability'), href: '/#reliability' },
             ],
           },
@@ -66,7 +69,7 @@ export function MarketingFooter(props: {
               { text: t('Contact information'), href: '/#contact' },
               {
                 text: t('Documentation'),
-                href: docs?.href ?? '/#getting-started',
+                href: docs?.href ?? '/#dev',
               },
               { text: t('Create a free account'), href: '/sign-up' },
             ],
@@ -86,15 +89,15 @@ export function MarketingFooter(props: {
             links: docs
               ? [
                   { text: t('Documentation'), href: docs.href },
-                  { text: t('Quick start'), href: '/#getting-started' },
+                  { text: t('Quick start'), href: '/#dev' },
                 ]
-              : [{ text: t('Quick start'), href: '/#getting-started' }],
+              : [{ text: t('Quick start'), href: '/#dev' }],
           },
           {
             title: t('Company'),
             links: [
               { text: t('About us'), href: '/#about' },
-              { text: t('Our capabilities'), href: '/#capabilities' },
+              { text: t('Our capabilities'), href: '/#ability' },
             ],
           },
           {
@@ -117,17 +120,17 @@ export function MarketingFooter(props: {
             .filter((link) => link.href === '/rankings')
             .map(() => ({
               text: t('Live platform rankings'),
-              href: '/pricing#rank',
+              href: '/rankings',
             })),
-          { text: t('Core capabilities'), href: '/#capabilities' },
-          { text: t('Flexible access'), href: '/#pricing' },
+          { text: t('Core capabilities'), href: '/#ability' },
+          { text: t('Flexible access'), href: '/#price' },
         ],
       },
       {
         title: t('Developers'),
         links: [
           ...(docs ? [{ text: t('Documentation'), href: docs.href }] : []),
-          { text: t('Quick start'), href: '/#getting-started' },
+          { text: t('Quick start'), href: '/#dev' },
           ...navLinks
             .filter((link) => link.href === '/dashboard')
             .map((link) => ({ text: t(link.title), href: link.href })),
@@ -152,6 +155,7 @@ export function MarketingFooter(props: {
       logo={MARKETING_BRAND.logo}
       copyright={t('All rights reserved.')}
       subtitle={branded ? MARKETING_BRAND.subtitle : undefined}
+      brandContent={branded ? <MarketingCompany /> : undefined}
       copyrightName={
         branded ? t('Zhejiang Maixiaoyun Technology Co., Ltd.') : undefined
       }

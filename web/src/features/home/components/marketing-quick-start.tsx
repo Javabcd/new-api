@@ -67,7 +67,7 @@ export function MarketingQuickStart() {
     },
   ]
   return (
-    <section className='mxy-section mxy-quick-start' id='getting-started'>
+    <section className='mxy-section mxy-tinted mxy-quick-start' id='dev'>
       <div className='mxy-wrap'>
         <div className='mxy-section-heading mxy-centered'>
           <Badge variant='outline' className='mxy-eyebrow'>

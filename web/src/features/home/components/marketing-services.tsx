@@ -74,7 +74,7 @@ export function MarketingServices() {
     },
   ]
   return (
-    <section className='mxy-section mxy-tinted' id='pricing'>
+    <section className='mxy-section' id='price'>
       <div className='mxy-wrap'>
         <div className='mxy-section-heading mxy-centered'>
           <Badge variant='outline' className='mxy-eyebrow'>

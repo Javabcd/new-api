@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   useCallback,
   useEffect,
@@ -31,8 +31,8 @@ import { ErrorState } from '@/components/error-state'
 import { PublicLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { selectFeaturedModels } from '@/features/marketing/featured-models'
 import { MarketingFooter } from '@/features/marketing/marketing-footer'
-import { RankingsPreview } from '@/features/marketing/rankings-preview'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
@@ -47,13 +47,17 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { CATALOG_CAPABILITIES, EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import {
+  CATALOG_CAPABILITIES,
+  EXCLUDED_GROUPS,
+  SORT_OPTIONS,
+  VIEW_MODES,
+} from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 import { getCatalogCapabilities } from './lib/filters'
 
 export function Pricing() {
-  const router = useRouter()
   const catalogResultsRef = useRef<HTMLElement>(null)
   const catalogFiltersRef = useRef<HTMLElement>(null)
   const { t, i18n } = useTranslation()
@@ -104,13 +108,12 @@ export function Pricing() {
     hasActiveFilters,
     activeFilterCount,
     availableTags,
-    applyFilters,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
 
   const previousResultsKey = useRef(resultsKey)
-  const scrollToCatalogResults = useCallback(() => {
+  const updateCatalogScrollOffset = useCallback(() => {
     const results = catalogResultsRef.current
     const filters = catalogFiltersRef.current
     if (!results || !filters) return
@@ -120,8 +123,24 @@ export function Pricing() {
       '--mxy-catalog-tools-height',
       `${filtersHeight}px`
     )
-    results.scrollIntoView({ block: 'start', behavior: 'auto' })
+    const firstCard = results.querySelector('.mxy-compact-model')
+    const firstRowHeight = firstCard
+      ? firstCard.getBoundingClientRect().bottom -
+        results.getBoundingClientRect().top
+      : 0
+    results.style.setProperty(
+      '--mxy-catalog-results-max-offset',
+      `${Math.max(0, window.innerHeight - firstRowHeight - 16)}px`
+    )
   }, [])
+
+  const scrollToCatalogResults = useCallback(() => {
+    updateCatalogScrollOffset()
+    catalogResultsRef.current?.scrollIntoView({
+      block: 'start',
+      behavior: 'auto',
+    })
+  }, [updateCatalogScrollOffset])
 
   const handleModelClick = useCallback((modelName: string) => {
     setSelectedModelName(modelName)
@@ -152,19 +171,21 @@ export function Pricing() {
 
   useEffect(() => {
     const filters = catalogFiltersRef.current
-    if (!filters) return
-    const updateOffset = () => {
-      catalogResultsRef.current?.style.setProperty(
-        '--mxy-catalog-tools-height',
-        `${filters.getBoundingClientRect().height}px`
-      )
-    }
-    updateOffset()
+    const results = catalogResultsRef.current
+    if (!filters || !results) return
+    updateCatalogScrollOffset()
     if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(updateOffset)
+    const observer = new ResizeObserver(updateCatalogScrollOffset)
     observer.observe(filters)
-    return () => observer.disconnect()
-  }, [])
+    observer.observe(results)
+    window.addEventListener('resize', updateCatalogScrollOffset, {
+      passive: true,
+    })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateCatalogScrollOffset)
+    }
+  }, [updateCatalogScrollOffset, isLoading, resultsKey, viewMode])
 
   const authenticated = useAuthStore((state) => Boolean(state.auth.user))
   const ready = !isLoading && !error
@@ -235,6 +256,7 @@ export function Pricing() {
           key={resultsKey}
           appearance='marketing'
           presentation='compact'
+          groupByVendor={sortBy === SORT_OPTIONS.CATALOG}
           models={filteredModels}
           onModelClick={handleModelClick}
           priceRate={priceRate}
@@ -264,24 +286,7 @@ export function Pricing() {
       appearance='marketing'
       marketingVariant='catalog'
       showMainContainer={false}
-      notice={
-        <div className='mxy-notice'>
-          <div className='mxy-wrap'>
-            <span className='mxy-notice-pill'>AIMXY</span>
-            <span>
-              {ready
-                ? t(
-                    'Live catalog · {{models}} models · {{providers}} providers',
-                    {
-                      models: formatNumber(models.length, locale),
-                      providers: formatNumber(stats.providers, locale),
-                    }
-                  )
-                : t('Live model catalog')}
-            </span>
-          </div>
-        </div>
-      }
+      notice={false}
     >
       <main className='mxy-catalog-page'>
         <section className='mxy-catalog-hero'>
@@ -438,19 +443,36 @@ export function Pricing() {
           />
         )}
       </main>
-      <RankingsPreview
-        appearance='catalog'
-        onPricingFilterSelect={(filters) => {
-          applyFilters(filters)
-          const target = router.buildLocation({
-            to: '/pricing',
-            search: filters,
-          })
-          if (target.href === router.state.location.href) {
-            scrollToCatalogResults()
-          }
-        }}
-      />
+      {ready && viewMode === VIEW_MODES.CARD && filteredModels.length > 0 && (
+        <section
+          className='mxy-price-reference'
+          aria-label={t('Current model prices')}
+        >
+          <div className='mxy-wrap'>
+            <div className='mxy-section-heading'>
+              <Badge variant='outline' className='mxy-eyebrow'>
+                {t('Model pricing in one place')}
+              </Badge>
+              <h2>{t('Current model prices')}</h2>
+              <p>
+                {t(
+                  'Prices follow the current catalog and selected display settings.'
+                )}
+              </p>
+            </div>
+            <PricingTable
+              presentation='reference'
+              models={selectFeaturedModels(filteredModels, 8)}
+              priceRate={priceRate}
+              usdExchangeRate={usdExchangeRate}
+              tokenUnit={tokenUnit}
+              showRechargePrice={showRechargePrice}
+              selectedGroup={groupFilter}
+              onModelClick={handleModelClick}
+            />
+          </div>
+        </section>
+      )}
       <section className='mxy-catalog-cta-section'>
         <div className='mxy-wrap'>
           <div className='mxy-final-cta'>

@@ -103,14 +103,14 @@ For commercial licensing, please contact support@quantumnous.com
 .mxy-home .mxy-hero-glow-peach {
   width: 660px;
   height: 660px;
-  background: radial-gradient(circle, #ffb27a5c, transparent 66%);
+  background: radial-gradient(circle, #7c9cff5c, transparent 66%);
   top: -260px;
   left: -160px;
 }
 .mxy-home .mxy-hero-glow-rose {
   width: 580px;
   height: 580px;
-  background: radial-gradient(circle, #f2a0c04d, transparent 66%);
+  background: radial-gradient(circle, #b49bff4d, transparent 66%);
   top: -110px;
   right: -170px;
 }
@@ -122,7 +122,7 @@ For commercial licensing, please contact support@quantumnous.com
   left: 38%;
 }
 .mxy-home .mxy-hero-grid {
-  grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
   gap: 56px;
 }
 .mxy-home .mxy-hero h1 {
@@ -136,7 +136,7 @@ For commercial licensing, please contact support@quantumnous.com
   white-space: normal;
 }
 .mxy-home:lang(zh) .mxy-hero-title {
-  white-space: nowrap;
+  white-space: normal;
 }
 .mxy-home:not(:lang(zh)) .mxy-hero h1 {
   word-break: normal;
@@ -163,7 +163,7 @@ For commercial licensing, please contact support@quantumnous.com
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--mxy-coral);
+  background: var(--mxy-status-dot);
 }
 .mxy-home .mxy-hero-visual {
   position: relative;
@@ -186,6 +186,61 @@ For commercial licensing, please contact support@quantumnous.com
 .mxy-home .mxy-generation-card {
   padding: 20px 22px 22px;
   box-shadow: var(--mxy-shadow);
+}
+.mxy-home .mxy-hero-note {
+  margin-top: 15px;
+  padding-left: 12px;
+  border-left: 2px solid var(--input);
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  line-height: 1.78;
+}
+.mxy-home .mxy-usage-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+.mxy-home .mxy-usage-total strong {
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  background: var(--mxy-text-gradient);
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.mxy-home .mxy-usage-total span {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+.mxy-home .mxy-usage-chart {
+  width: 100%;
+  height: 100px;
+  margin-top: 20px;
+  color: var(--mxy-coral);
+}
+.mxy-home .mxy-usage-models {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--input);
+}
+.mxy-home .mxy-usage-model {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 12.5px;
+}
+.mxy-home .mxy-usage-model img {
+  width: 24px;
+  height: 24px;
+}
+.mxy-home .mxy-usage-model .mxy-usage-track {
+  width: 96px;
+  height: 7px;
+  margin-left: auto;
 }
 .mxy-home .mxy-console-heading {
   flex-wrap: nowrap;
@@ -262,7 +317,7 @@ For commercial licensing, please contact support@quantumnous.com
   color: #fff;
   background: var(--mxy-button-gradient);
   border-color: transparent;
-  box-shadow: 0 8px 18px -10px #f26a3ce6;
+  box-shadow: 0 8px 18px -10px #7c9cffe6;
 }
 .mxy-home .mxy-frame .mxy-play {
   width: 27px;
@@ -366,7 +421,7 @@ For commercial licensing, please contact support@quantumnous.com
   background: #b49bff;
 }
 .mxy-home .mxy-provider-pills > :nth-child(6) i {
-  background: #ff8f6b;
+  background: #7c9cff;
 }
 .mxy-home .mxy-stats-section {
   padding: 0 0 92px;
@@ -389,15 +444,89 @@ For commercial licensing, please contact support@quantumnous.com
   margin-top: 6px;
   font-size: 13.5px;
 }
+.mxy-home .mxy-featured-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
 .mxy-home .mxy-featured-model {
   position: relative;
-  padding: 17px 16px 16px;
+  overflow: hidden;
+  padding: 22px;
+  border-radius: 22px;
   gap: 11px;
   box-shadow: var(--mxy-shadow-small);
   transition:
     transform 0.22s,
     box-shadow 0.22s,
     border-color 0.22s;
+}
+.mxy-home .mxy-featured-model::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--mxy-decoration);
+}
+.mxy-home .mxy-featured-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 3px;
+}
+.mxy-home .mxy-featured-top > img {
+  flex: none;
+}
+.mxy-home .mxy-featured-model > p {
+  min-height: 44px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.mxy-home .mxy-featured-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 13px;
+  border-top: 1px dashed var(--input);
+}
+.mxy-home .mxy-featured-capabilities [data-slot='badge'] {
+  height: auto;
+  font-size: 10.5px;
+  white-space: normal;
+}
+.mxy-home .mxy-model-wall {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 30px;
+}
+.mxy-home .mxy-wall-model {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--mxy-shadow-small);
+  transition:
+    transform 0.22s,
+    box-shadow 0.22s;
+}
+.mxy-home .mxy-wall-model:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--mxy-shadow);
+}
+.mxy-home .mxy-wall-model > :is(img, .mxy-vendor-fallback) {
+  width: 34px;
+  height: 34px;
+  flex: none;
 }
 .mxy-home .mxy-featured-model:hover {
   border-color: var(--input);
@@ -454,7 +583,7 @@ For commercial licensing, please contact support@quantumnous.com
   gap: 8px;
   margin-top: 26px;
 }
-.mxy-home .mxy-capability-tags > span {
+.mxy-home .mxy-capability-tags > button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -465,6 +594,11 @@ For commercial licensing, please contact support@quantumnous.com
   border-radius: 999px;
   padding: 7px 14px;
   box-shadow: var(--mxy-shadow-small);
+}
+.mxy-home .mxy-capability-tags > button[aria-pressed='true'] {
+  background: var(--mxy-button-gradient);
+  border-color: transparent;
+  color: #fff;
 }
 .mxy-home .mxy-capability-tags i {
   width: 7px;
@@ -574,7 +708,7 @@ For commercial licensing, please contact support@quantumnous.com
 .mxy-home .mxy-wave i {
   flex: 1;
   border-radius: 3px;
-  background: linear-gradient(135deg, #ffb27a, #f2a0c0);
+  background: linear-gradient(135deg, #7c9cff, #b49bff);
   opacity: 0.85;
 }
 .mxy-home .mxy-capability {
@@ -720,13 +854,13 @@ For commercial licensing, please contact support@quantumnous.com
   background: var(--mxy-bright-gradient);
 }
 .mxy-home .mxy-usage-row:nth-child(2) i {
-  background: linear-gradient(90deg, #ffc46b, #ff8f6b);
+  background: linear-gradient(90deg, #63cbee, #7c9cff);
 }
 .mxy-home .mxy-usage-row:nth-child(3) i {
-  background: linear-gradient(90deg, #f2a0c0, #b49bff);
+  background: linear-gradient(90deg, #b49bff, #b49bff);
 }
 .mxy-home .mxy-usage-row:nth-child(4) i {
-  background: linear-gradient(90deg, #b49bff, #ff9bc6);
+  background: linear-gradient(90deg, #b49bff, #b49bff);
 }
 .mxy-home .mxy-route-preview {
   display: flex;
@@ -1035,6 +1169,30 @@ For commercial licensing, please contact support@quantumnous.com
 .mxy-home .mxy-final-section {
   padding-top: 0;
 }
+.mxy-home .mxy-faq {
+  max-width: 860px;
+  margin-inline: auto;
+  gap: 12px;
+}
+.mxy-home .mxy-faq [data-slot='accordion-item'] {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--mxy-shadow-small);
+}
+.mxy-home .mxy-faq [data-slot='accordion-trigger'] {
+  padding: 20px 24px;
+  font-size: 15.5px;
+  line-height: 1.6;
+  text-decoration: none;
+}
+.mxy-home .mxy-faq [data-slot='accordion-content'] > div {
+  padding: 0 24px 22px;
+  color: var(--muted-foreground);
+  font-size: 14.5px;
+  line-height: 1.85;
+}
 .mxy-home .mxy-final-cta {
   padding: 64px 56px;
   border-radius: 32px;
@@ -1042,7 +1200,7 @@ For commercial licensing, please contact support@quantumnous.com
   background: linear-gradient(
     120deg,
     var(--mxy-soft),
-    color-mix(in srgb, var(--background), #f2a0c01a),
+    color-mix(in srgb, var(--background), #b49bff1a),
     color-mix(in srgb, var(--background), #b49bff1a)
   );
 }
@@ -1136,7 +1294,7 @@ For commercial licensing, please contact support@quantumnous.com
     opacity: 0;
   }
 }
-@media (max-width: 1040px) {
+@media (max-width: 1080px) {
   .mxy-home .mxy-hero-grid {
     grid-template-columns: 1fr;
     gap: 44px;
@@ -1146,6 +1304,9 @@ For commercial licensing, please contact support@quantumnous.com
     max-width: 640px;
   }
   .mxy-home .mxy-featured-grid,
+  .mxy-home .mxy-model-wall {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .mxy-home .mxy-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1191,23 +1352,32 @@ For commercial licensing, please contact support@quantumnous.com
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 620px) {
+@media (max-width: 680px) {
   .mxy-home .mxy-wrap,
   .mxy-home .mxy-header-inner {
     padding-inline: 18px;
   }
-  .mxy-home .mxy-featured-grid {
-    grid-template-columns: 1fr;
+  .mxy-home .mxy-featured-grid,
+  .mxy-home .mxy-model-wall {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
   .mxy-home .mxy-featured-model {
-    flex-direction: row;
-    align-items: center;
-    gap: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     padding: 15px;
   }
   .mxy-home .mxy-model-info {
     flex: 1;
+  }
+  .mxy-home .mxy-featured-top {
+    flex-direction: column;
+    align-items: start;
+  }
+  .mxy-home .mxy-wall-model {
+    gap: 9px;
+    padding: 12px;
   }
   .mxy-home .mxy-featured-model > :is(img, .mxy-vendor-fallback) {
     order: 1;

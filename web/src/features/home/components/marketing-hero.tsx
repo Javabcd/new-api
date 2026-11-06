@@ -17,23 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Check } from 'lucide-react'
+import { useId } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { MarketingActions } from '@/features/marketing/marketing-actions'
+import { ModelVendorIcon } from '@/features/marketing/model-vendor-icon'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 
-const MODEL_CHIPS = [
-  'GPT-5.6',
-  'Claude Opus 4.8',
-  'DeepSeek V4',
-  'Seedance 2.5',
-  'Sora 2 Pro',
-  'Kling v2',
-]
+const DEMO_MODELS = [
+  { vendor: 'OpenAI', name: 'GPT', value: 86 },
+  { vendor: 'Anthropic', name: 'Claude', value: 64 },
+  { vendor: 'DeepSeek', name: 'DeepSeek', value: 52 },
+] as const
 
 export function MarketingHero() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const chartId = useId()
   return (
     <section className='mxy-hero' id='top'>
       <div className='mxy-hero-glow mxy-hero-glow-peach' aria-hidden='true' />
@@ -47,11 +49,11 @@ export function MarketingHero() {
           </Badge>
           <h1>
             <span className='mxy-gradient-text'>
-              {t('Tokens power possibilities')}
+              {t('Tokens connect intelligence')}
             </span>
             <br />
             <span className='mxy-hero-title'>
-              {t('One gateway for multimodal creation')}
+              {t('One gateway for leading AI models')}
             </span>
           </h1>
           <p className='mxy-lead'>
@@ -74,11 +76,13 @@ export function MarketingHero() {
               </span>
             ))}
           </div>
+          <p className='mxy-hero-note'>
+            {t(
+              'This platform forwards API requests. AI generation is provided by upstream model services.'
+            )}
+          </p>
         </div>
-        <div
-          className='mxy-hero-visual'
-          aria-label={t('Multimodal generation preview')}
-        >
+        <div className='mxy-hero-visual' aria-label={t('Token usage preview')}>
           <svg
             className='mxy-hero-flow'
             viewBox='0 0 560 460'
@@ -99,67 +103,49 @@ export function MarketingHero() {
                 <i />
                 <i />
               </span>
-              <span>AIMXY Studio · {t('Multimodal generation')}</span>
+              <span>{t('Usage overview')}</span>
               <Badge variant='secondary' className='mxy-live'>
                 <i aria-hidden='true' />
                 {t('Demo preview')}
               </Badge>
             </div>
-            <div className='mxy-prompt'>
-              <span>/imagine</span>
-              <p>
-                {t(
-                  'A wheat spirit floating in a nebula, cinematic, backlit, 8K'
-                )}
-              </p>
-              <i className='mxy-caret' aria-hidden='true' />
+            <div className='mxy-usage-total'>
+              <strong>{formatNumber(12.84, locale)}M</strong>
+              <span>{t('Tokens consumed')}</span>
             </div>
-            <div className='mxy-mode-labels'>
-              {[t('Text'), t('Image'), t('Video'), t('Audio')].map(
-                (label, index) => (
-                  <Badge
-                    key={label}
-                    variant='outline'
-                    className={index === 2 ? 'mxy-mode-active' : undefined}
-                  >
-                    {label}
-                  </Badge>
-                )
-              )}
-            </div>
-            <div className='mxy-frames'>
-              {[1, 2, 3, 4].map((frame) => (
-                <div className='mxy-frame' key={frame}>
-                  <img
-                    src={`/maixiaoyun/images/hero-0${frame}.jpg`}
-                    alt={t('Wheat field storyboard, frame {{frame}}', {
-                      frame,
-                    })}
-                    width={1536}
-                    height={960}
-                    fetchPriority={frame === 1 ? 'high' : undefined}
-                  />
-                  <img
-                    className='mxy-play'
-                    src='/maixiaoyun/play.svg'
-                    alt=''
-                    width={27}
-                    height={27}
-                  />
-                  <span>0{frame}</span>
+            <svg
+              className='mxy-usage-chart'
+              viewBox='0 0 460 100'
+              preserveAspectRatio='none'
+              aria-hidden='true'
+            >
+              <defs>
+                <linearGradient id={chartId} x1='0' y1='0' x2='0' y2='1'>
+                  <stop offset='0' stopColor='currentColor' stopOpacity='.3' />
+                  <stop offset='1' stopColor='currentColor' stopOpacity='0' />
+                </linearGradient>
+              </defs>
+              <path
+                d='M0 74C40 70 62 50 96 54S150 30 188 34S244 58 282 48S340 16 380 20S436 34 460 26V100H0Z'
+                fill={`url(#${chartId})`}
+              />
+              <path
+                d='M0 74C40 70 62 50 96 54S150 30 188 34S244 58 282 48S340 16 380 20S436 34 460 26'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2.4'
+              />
+            </svg>
+            <div className='mxy-usage-models'>
+              {DEMO_MODELS.map((model) => (
+                <div className='mxy-usage-model' key={model.vendor}>
+                  <ModelVendorIcon name={model.vendor} />
+                  <strong>{model.name}</strong>
+                  <div className='mxy-usage-track' aria-hidden='true'>
+                    <i style={{ width: `${model.value}%` }} />
+                  </div>
                 </div>
               ))}
-            </div>
-            <Progress
-              value={78}
-              aria-label={t('Demo generation progress')}
-              className='mxy-demo-progress'
-            />
-            <div className='mxy-console-meta'>
-              <span>
-                <b>doubao-seedance-2-5-260628</b> · 1080p · 5s · 16:9
-              </span>
-              <span>78%</span>
             </div>
           </div>
           <div className='mxy-generation-note'>
@@ -167,17 +153,9 @@ export function MarketingHero() {
               <Check aria-hidden='true' />
             </span>
             <div>
-              <strong>{t('Token usage in one place')}</strong>
-              <p>{t('Text, image and video usage on one bill')}</p>
+              <strong>{t('Intelligent routing')}</strong>
+              <p>{t('Configurable retries and model routing')}</p>
             </div>
-          </div>
-          <div className='mxy-provider-pills'>
-            {MODEL_CHIPS.map((name) => (
-              <Badge variant='outline' key={name}>
-                <i aria-hidden='true' />
-                {name}
-              </Badge>
-            ))}
           </div>
         </div>
       </div>

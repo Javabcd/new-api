@@ -29,6 +29,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
+import { MarketingFooter } from '@/features/marketing/marketing-footer'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -170,7 +171,44 @@ it('preserves custom footer content, legal links and project attribution in the 
   )
 })
 
-it('marks only the selected home anchor as current when About links to the company section', async () => {
+it.each(['home', 'catalog'] as const)(
+  'preserves company contacts and unique anchors in the %s footer when custom HTML is configured',
+  async (variant) => {
+    useSystemConfigStore
+      .getState()
+      .setConfig({ footerHtml: '<strong>Configured footer</strong>' })
+
+    await renderNavigation(<MarketingFooter variant={variant} />)
+
+    const footer = within(screen.getByRole('contentinfo'))
+    expect(footer.getByText('Configured footer')).toBeVisible()
+    expect(
+      footer.getByText('Zhejiang Maixiaoyun Technology Co., Ltd.')
+    ).toBeVisible()
+    expect(footer.getByRole('link', { name: '138 5879 1566' })).toHaveAttribute(
+      'href',
+      'tel:13858791566'
+    )
+    expect(
+      footer.getByRole('link', { name: '13858791566@139.com' })
+    ).toHaveAttribute('href', 'mailto:13858791566@139.com')
+    for (const hash of ['about', 'business', 'contact']) {
+      expect(document.querySelectorAll(`#${hash}`)).toHaveLength(1)
+    }
+    expect(
+      footer.getByRole('link', { name: 'User Agreement' })
+    ).toHaveAttribute('href', '/user-agreement')
+    expect(
+      footer.getByRole('link', { name: 'Privacy Policy' })
+    ).toHaveAttribute('href', '/privacy-policy')
+    expect(footer.getByRole('link', { name: /^New API$/ })).toHaveAttribute(
+      'href',
+      'https://github.com/QuantumNous/new-api'
+    )
+  }
+)
+
+it('marks only the selected home anchor as current when navigating to core capabilities', async () => {
   const user = userEvent.setup()
   await renderNavigation(
     <PublicLayout
@@ -180,10 +218,10 @@ it('marks only the selected home anchor as current when About links to the compa
       showNotifications={false}
       showAuthButtons={false}
     >
-      <section id='about'>Company information</section>
+      <section id='ability'>Core capabilities</section>
     </PublicLayout>
   )
-  const about = screen.getByRole('link', { name: 'About' })
+  const about = screen.getByRole('link', { name: 'Core capabilities' })
   const home = screen.getByRole('link', { name: 'Home' })
   expect(about).not.toHaveAttribute('aria-current', 'page')
   expect(home).toHaveAttribute('aria-current', 'page')
@@ -194,10 +232,9 @@ it('marks only the selected home anchor as current when About links to the compa
     screen.getByRole('button', { name: 'Toggle navigation menu' })
   )
   const menu = await screen.findByRole('dialog', { name: '麦小云' })
-  expect(within(menu).getByRole('link', { name: 'About' })).toHaveAttribute(
-    'aria-current',
-    'page'
-  )
+  expect(
+    within(menu).getByRole('link', { name: 'Core capabilities' })
+  ).toHaveAttribute('aria-current', 'page')
   expect(within(menu).getByRole('link', { name: 'Home' })).not.toHaveAttribute(
     'aria-current',
     'page'

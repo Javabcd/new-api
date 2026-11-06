@@ -143,9 +143,9 @@ async function loadHomeContent(content = '') {
 
 it.each([
   { source: 'CTA', name: 'Business cooperation', hash: 'business' },
-  { source: 'footer', name: 'Quick start', hash: 'getting-started' },
+  { source: 'footer', name: 'Quick start', hash: 'dev' },
   { source: 'footer', name: 'About us', hash: 'about' },
-  { source: 'footer', name: 'Core capabilities', hash: 'capabilities' },
+  { source: 'footer', name: 'Core capabilities', hash: 'ability' },
   { source: 'footer', name: 'Business cooperation', hash: 'business' },
   { source: 'footer', name: 'Contact information', hash: 'contact' },
 ])(
@@ -194,6 +194,39 @@ it('scrolls to the requested section after opening a home hash URL directly', as
   )
 })
 
+it('scrolls to business contacts after delayed home content when the pricing CTA is followed with a custom footer', async () => {
+  const user = userEvent.setup()
+  useSystemConfigStore
+    .getState()
+    .setConfig({ footerHtml: '<strong>Configured footer</strong>' })
+  const router = await renderPages('/pricing')
+  const renderedHashes: string[] = []
+  const unsubscribe = router.subscribe('onRendered', ({ toLocation }) => {
+    renderedHashes.push(toLocation.hash)
+  })
+
+  await user.click(screen.getByRole('button', { name: 'Business cooperation' }))
+
+  await waitFor(() => expect(renderedHashes).toContain('business'))
+  unsubscribe()
+  expect(screen.getByText('Loading...')).toBeVisible()
+  expect(document.querySelector('#business')).not.toBeInTheDocument()
+  scrollIntoView.mockClear()
+
+  await loadHomeContent()
+
+  const target = document.querySelector('#business')
+  expect(target).toBeInTheDocument()
+  expect(
+    within(screen.getByRole('contentinfo')).getByText('Configured footer')
+  ).toBeVisible()
+  expect(scrollIntoView.mock.contexts).toContain(target)
+  expect(scrollIntoView).toHaveBeenCalledWith({
+    block: 'start',
+    behavior: 'auto',
+  })
+})
+
 it('scrolls to a new hash while the marketing home is already mounted', async () => {
   const user = userEvent.setup()
   await renderPages('/#business')
@@ -212,6 +245,23 @@ it('scrolls to a new hash while the marketing home is already mounted', async ()
     )
   )
 })
+
+it.each([
+  ['models', 'plaza'],
+  ['modalities', 'plaza'],
+  ['capabilities', 'ability'],
+  ['getting-started', 'dev'],
+  ['pricing', 'price'],
+])(
+  'maps the legacy #%s anchor to #%s after the home content loads',
+  async (legacy, current) => {
+    await renderPages(`/#${legacy}`)
+    await loadHomeContent()
+    expect(scrollIntoView.mock.contexts).toContain(
+      document.getElementById(current)
+    )
+  }
+)
 
 it.each(['/', '/#missing-section'])(
   'does not scroll when %s has no matching home section',

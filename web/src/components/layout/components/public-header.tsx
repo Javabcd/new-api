@@ -90,7 +90,6 @@ export function PublicHeader(props: PublicHeaderProps) {
   const reference =
     marketing &&
     (props.marketingVariant === 'home' || props.marketingVariant === 'catalog')
-  const catalog = marketing && props.marketingVariant === 'catalog'
   const LinksContainer = reference ? 'div' : Fragment
   const ActionsContainer = reference ? 'div' : Fragment
   const {
@@ -132,15 +131,24 @@ export function PublicHeader(props: PublicHeaderProps) {
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 || marketing ? dynamicLinks : navLinks
 
-  const navigationLinks = links.map((link) => {
+  const marketingLinks = [
+    ...links.filter((link) => link.href === '/' || link.href === '/pricing'),
+    ...(links.some((link) => link.href === '/')
+      ? [
+          { title: t('Core capabilities'), href: '/#ability' },
+          { title: t('Developers'), href: '/#dev' },
+          { title: t('Pricing'), href: '/#price' },
+        ]
+      : []),
+    ...links.filter((link) => link.external || link.href === '/docs'),
+  ]
+  const navigationLinks = (reference ? marketingLinks : links).map((link) => {
     let target = link.href
     let hash: string | undefined
-    if (reference && link.href === '/about') {
-      target = '/'
-      hash = 'about'
-    } else if (catalog && link.href === '/rankings') {
-      target = '/pricing'
-      hash = 'rank'
+    if (reference && !link.external) {
+      const [path, fragment] = link.href.split('#')
+      target = path
+      hash = fragment
     }
     return {
       ...link,

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Fragment, useMemo } from 'react'
+import { Fragment, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
@@ -42,6 +42,7 @@ interface FooterProps {
   copyright?: string
   copyrightName?: string
   subtitle?: string
+  brandContent?: ReactNode
   className?: string
 }
 
@@ -240,7 +241,8 @@ export function Footer(props: FooterProps) {
           props.className
         )}
       >
-        <div className='mx-auto w-full max-w-6xl px-6 py-5'>
+        <div className='mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-5'>
+          {props.brandContent}
           <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
             <div
               className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
@@ -284,6 +286,7 @@ export function Footer(props: FooterProps) {
                 ? t('One gateway for every AI modality')
                 : t('Powerful API Management Platform')}
             </p>
+            {props.brandContent}
           </div>
 
           {/* Links columns */}

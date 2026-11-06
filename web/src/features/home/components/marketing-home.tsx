@@ -27,9 +27,9 @@ import { useMarketingAccess } from '@/features/marketing/use-marketing-access'
 
 import { MarketingCapabilities } from './marketing-capabilities'
 import { MarketingCatalog } from './marketing-catalog'
-import { MarketingCompany } from './marketing-company'
+import { MarketingFaq } from './marketing-faq'
+import { MarketingFinalCta } from './marketing-final-cta'
 import { MarketingHero } from './marketing-hero'
-import { MarketingModalities } from './marketing-modalities'
 import { MarketingQuickStart } from './marketing-quick-start'
 import { MarketingReliability } from './marketing-reliability'
 import { MarketingServices } from './marketing-services'
@@ -43,7 +43,14 @@ export function MarketingHome() {
     if (!hash) return
 
     // The router may attempt hash scrolling before the home content has loaded.
-    document.getElementById(hash)?.scrollIntoView({
+    const aliases: Record<string, string> = {
+      models: 'plaza',
+      modalities: 'plaza',
+      capabilities: 'ability',
+      'getting-started': 'dev',
+      pricing: 'price',
+    }
+    document.getElementById(aliases[hash] ?? hash)?.scrollIntoView({
       block: 'start',
       behavior: 'auto',
     })
@@ -76,12 +83,12 @@ export function MarketingHome() {
       <main>
         <MarketingHero />
         <MarketingCatalog />
-        <MarketingModalities />
         <MarketingCapabilities />
         <MarketingQuickStart />
         <MarketingServices />
         <MarketingReliability />
-        <MarketingCompany />
+        <MarketingFaq />
+        <MarketingFinalCta />
       </main>
       <MarketingFooter variant='home' />
     </PublicLayout>

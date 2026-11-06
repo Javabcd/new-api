@@ -1,15 +1,12 @@
-<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-        <defs><linearGradient id="wgNav" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#FFB27A"/><stop offset=".55" stop-color="#F2A0C0"/><stop offset="1" stop-color="#B49BFF"/></linearGradient></defs>
-        <rect x="3" y="3" width="114" height="114" rx="34" fill="url(#wgNav)"/>
-        <rect x="56" y="30" width="8" height="62" rx="4" fill="#FFFFFF"/>
-        <g fill="#FFFFFF">
-          <rect x="34" y="36" width="19" height="8.6" rx="4.3" transform="rotate(-38 43.5 40.3)"/>
-          <rect x="67" y="36" width="19" height="8.6" rx="4.3" transform="rotate(38 76.5 40.3)"/>
-          <rect x="32" y="52" width="20" height="8.6" rx="4.3" transform="rotate(-32 42 56.3)"/>
-          <rect x="68" y="52" width="20" height="8.6" rx="4.3" transform="rotate(32 78 56.3)"/>
-          <rect x="33" y="68" width="20" height="8.6" rx="4.3" transform="rotate(-24 43 72.3)"/>
-          <rect x="67" y="68" width="20" height="8.6" rx="4.3" transform="rotate(24 77 72.3)"/>
-        </g>
-        <circle cx="60" cy="30" r="7" fill="#FFFFFF"/>
-      </svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="peak-m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C9CFF"/>
+      <stop offset=".5" stop-color="#8E85FF"/>
+      <stop offset="1" stop-color="#B49BFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="114" height="114" rx="34" fill="url(#peak-m)"/>
+  <path d="M26 84L26 40L60 74L94 40L94 84" fill="none" stroke="#fff" stroke-width="11.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="60" cy="74" r="6.5" fill="#00E5C0" stroke="#fff" stroke-width="2.6"/>
+</svg>

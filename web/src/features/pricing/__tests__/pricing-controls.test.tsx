@@ -103,9 +103,15 @@ describe('pricing controls', () => {
     expect(
       screen.queryByRole('button', { name: /^Groups$/ })
     ).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /^Vendor A/ }))
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'All Vendors' }),
+      'Vendor A'
+    )
     expect(props.onVendorChange).toHaveBeenCalledWith('Vendor A')
-    await user.click(screen.getByRole('button', { name: /^Chat/ }))
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Capabilities' }),
+      'text'
+    )
     expect(onCapabilityChange).toHaveBeenCalledWith('text')
   })
 

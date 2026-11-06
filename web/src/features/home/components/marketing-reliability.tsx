@@ -45,7 +45,7 @@ export function MarketingReliability() {
     { icon: FileSearch, label: t('Request logs') },
   ]
   return (
-    <section className='mxy-section' id='reliability'>
+    <section className='mxy-section mxy-tinted' id='reliability'>
       <div className='mxy-wrap mxy-reliability-grid'>
         <div>
           <Badge variant='outline' className='mxy-eyebrow'>

@@ -34,35 +34,36 @@ For commercial licensing, please contact support@quantumnous.com
     format('woff2');
 }
 .mxy-theme.mxy-reference {
-  --background: #fffaf7;
-  --foreground: #302438;
+  --background: #f6f8ff;
+  --foreground: #1e2740;
   --card: #fff;
-  --card-foreground: #302438;
+  --card-foreground: #1e2740;
   --popover: #fff;
-  --popover-foreground: #302438;
-  --primary: #b84e32;
+  --popover-foreground: #1e2740;
+  --primary: #4f63cd;
   --primary-foreground: #fff;
-  --muted: #fff4ec;
-  --muted-foreground: #786780;
-  --secondary: #fff1ea;
-  --secondary-foreground: #b84e32;
-  --accent: #fff4ec;
-  --accent-foreground: #b84e32;
-  --border: #f7e9e3;
-  --input: #f0dcd8;
-  --ring: #c4553a;
-  --mxy-soft: #fff4ec;
-  --mxy-ink2: #5c4c66;
-  --mxy-coral: #ff8f6b;
-  --mxy-tint: linear-gradient(120deg, #fff4ec, #fdf0f8);
-  --mxy-decoration: linear-gradient(120deg, #ffb27a, #f2a0c0 54%, #b49bff);
-  --mxy-text-gradient: linear-gradient(120deg, #e86a38, #db5a96 52%, #8e6bec);
+  --muted: #eef3ff;
+  --muted-foreground: #626f8d;
+  --secondary: #eef3ff;
+  --secondary-foreground: #4f63cd;
+  --accent: #eef3ff;
+  --accent-foreground: #4f63cd;
+  --border: #e7ecf9;
+  --input: #d9e2f6;
+  --ring: #7c9cff;
+  --mxy-soft: #eef3ff;
+  --mxy-ink2: #4a5674;
+  --mxy-coral: #7c9cff;
+  --mxy-status-dot: #45d6b0;
+  --mxy-tint: linear-gradient(120deg, #eef3ff, #f4efff);
+  --mxy-decoration: linear-gradient(120deg, #7c9cff, #b49bff 54%, #b49bff);
+  --mxy-text-gradient: linear-gradient(120deg, #5b7dfb, #8d6bd5 52%, #8e6bec);
   /* Reference hues adjusted only enough for small white labels to reach 4.5:1. */
-  --mxy-button-gradient: linear-gradient(120deg, #ce4b22, #cd3c82);
-  --mxy-bright-gradient: linear-gradient(120deg, #f26a3c, #e85fa8);
-  --mxy-shadow-small: 0 2px 10px #be8c8217;
-  --mxy-shadow: 0 14px 36px -16px #c68c8c4d;
-  --mxy-shadow-large: 0 34px 74px -34px #c68c8c66;
+  --mxy-button-gradient: linear-gradient(120deg, #596ed7, #7955bf);
+  --mxy-bright-gradient: linear-gradient(120deg, #7c9cff, #a288ff);
+  --mxy-shadow-small: 0 2px 10px #5064aa17;
+  --mxy-shadow: 0 14px 36px -16px #566cbe4d;
+  --mxy-shadow-large: 0 34px 74px -34px #566cbe66;
   --mxy-font:
     'MXY Inter', 'MiSans', 'HarmonyOS Sans SC', 'PingFang SC',
     'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -75,27 +76,27 @@ For commercial licensing, please contact support@quantumnous.com
   -webkit-font-smoothing: antialiased;
 }
 .dark .mxy-theme.mxy-reference {
-  --background: #211b23;
-  --foreground: #faedf5;
-  --card: #2b232e;
-  --card-foreground: #faedf5;
-  --popover: #2b232e;
-  --popover-foreground: #faedf5;
-  --primary: #f2a0c0;
-  --primary-foreground: #302438;
-  --muted: #382c39;
-  --muted-foreground: #c4b1c8;
-  --secondary: #4a3041;
-  --secondary-foreground: #f9d4e3;
-  --accent: #4a3041;
-  --accent-foreground: #f9d4e3;
-  --border: #513b49;
-  --input: #634853;
-  --ring: #e19bb3;
-  --mxy-ink2: #dfc9df;
-  --mxy-soft: #352735;
-  --mxy-tint: linear-gradient(120deg, #352735, #352537);
-  --mxy-text-gradient: linear-gradient(120deg, #ffb27a, #f2a0c0 54%, #c5b0ff);
+  --background: #161c30;
+  --foreground: #edf1ff;
+  --card: #20283e;
+  --card-foreground: #edf1ff;
+  --popover: #20283e;
+  --popover-foreground: #edf1ff;
+  --primary: #b49bff;
+  --primary-foreground: #1e2740;
+  --muted: #2a334c;
+  --muted-foreground: #b4bfd9;
+  --secondary: #303954;
+  --secondary-foreground: #e0e7ff;
+  --accent: #303954;
+  --accent-foreground: #e0e7ff;
+  --border: #39445e;
+  --input: #465370;
+  --ring: #9eafff;
+  --mxy-ink2: #d4dcf3;
+  --mxy-soft: #28314a;
+  --mxy-tint: linear-gradient(120deg, #28314a, #302b47);
+  --mxy-text-gradient: linear-gradient(120deg, #7c9cff, #b49bff 54%, #c5b0ff);
   --mxy-shadow-small: 0 2px 10px #0002;
   --mxy-shadow: 0 14px 36px -16px #0008;
   --mxy-shadow-large: 0 34px 74px -34px #000b;
@@ -117,8 +118,9 @@ For commercial licensing, please contact support@quantumnous.com
   height: 6px;
   flex: none;
   border-radius: 50%;
-  background: var(--mxy-coral);
-  box-shadow: 0 0 0 4px #ff8f6b2e;
+  background: var(--mxy-status-dot);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--mxy-status-dot) 16%, transparent);
 }
 .mxy-reference :is(.mxy-button, .mxy-button-outline) {
   position: relative;
@@ -148,13 +150,13 @@ For commercial licensing, please contact support@quantumnous.com
   background: var(--mxy-button-gradient);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 12px 26px -12px #f26a3cbf;
+  box-shadow: 0 12px 26px -12px #7c9cffbf;
 }
 .mxy-reference .mxy-button:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--mxy-button-gradient);
   transform: translateY(-2px);
   filter: none;
-  box-shadow: 0 18px 34px -14px #f26a3cd9;
+  box-shadow: 0 18px 34px -14px #7c9cffd9;
 }
 .mxy-reference .mxy-button-outline {
   background: var(--card);
@@ -235,7 +237,7 @@ For commercial licensing, please contact support@quantumnous.com
   background: color-mix(in srgb, var(--background) 88%, transparent);
   backdrop-filter: blur(20px) saturate(150%);
   border-bottom-color: var(--border);
-  box-shadow: 0 1px 20px #c68c8c14;
+  box-shadow: 0 1px 20px #566cbe14;
 }
 .mxy-reference .mxy-header-inner {
   max-width: var(--mxy-page-width, 1200px);
@@ -445,6 +447,31 @@ For commercial licensing, please contact support@quantumnous.com
 }
 .mxy-reference .mxy-footer-columns a:hover {
   color: var(--primary);
+}
+.mxy-reference .mxy-footer-company {
+  max-width: 320px;
+  margin-top: 18px;
+  color: var(--mxy-ink2);
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.mxy-reference .mxy-footer-company address {
+  margin-top: 10px;
+  font-style: normal;
+}
+.mxy-reference .mxy-footer-company address > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mxy-reference .mxy-footer-company address > p {
+  margin-top: 10px;
+  color: var(--muted-foreground);
+}
+.mxy-reference .mxy-footer-company[id],
+.mxy-reference .mxy-footer-company [id] {
+  scroll-margin-top: 100px;
 }
 .mxy-reference .mxy-footer > div > div:last-child {
   margin-top: 0;

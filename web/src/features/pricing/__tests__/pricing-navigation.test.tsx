@@ -35,7 +35,6 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-import type { RankingsSnapshot } from '@/features/rankings/types'
 import { STATUS_QUERY_KEY } from '@/lib/status-query'
 import { Route as PricingRoute } from '@/routes/pricing'
 import { useAuthStore } from '@/stores/auth-store'
@@ -90,43 +89,6 @@ const catalog: PricingData = {
   auto_groups: [],
 }
 
-const rankings: RankingsSnapshot = {
-  models: [
-    {
-      rank: 1,
-      model_name: 'ranked-model',
-      vendor: 'OpenAI',
-      category: 'all',
-      total_tokens: 12000,
-      share: 1,
-      growth_pct: 5,
-    },
-  ],
-  vendors: [
-    {
-      rank: 1,
-      vendor: 'OpenAI',
-      total_tokens: 12000,
-      share: 1,
-      growth_pct: 5,
-      models_count: 2,
-      top_model: 'ranked-model',
-    },
-  ],
-  top_movers: [
-    {
-      model_name: 'rising-model',
-      vendor: 'OpenAI',
-      rank_delta: 3,
-      current_rank: 2,
-      growth_pct: 20,
-    },
-  ],
-  top_droppers: [],
-  models_history: { points: [], models: [], buckets: 0 },
-  vendor_share_history: { points: [], vendors: [], buckets: 0 },
-}
-
 let client: QueryClient
 const originalSystemState = useSystemConfigStore.getState()
 const scrollIntoView = vi.fn<HTMLElement['scrollIntoView']>()
@@ -149,7 +111,6 @@ beforeEach(() => {
     },
   })
   client.setQueryData(['pricing'], catalog)
-  client.setQueryData(['rankings', 'week'], { success: true, data: rankings })
   client.setQueryData(['notice'], { success: true, data: '' })
   client.setQueryData(['perf-metrics-summary', 24], {
     success: true,
@@ -279,173 +240,72 @@ it.each(['display settings', 'catalog refresh'])(
   }
 )
 
-it.each(
-  [
-    {
-      name: 'ranked-model',
-      search: 'ranked-model',
-      vendor: false,
-      models: ['ranked-model'],
-    },
-    {
-      name: 'rising-model',
-      search: 'rising-model',
-      vendor: false,
-      models: ['rising-model'],
-    },
-    {
-      name: 'OpenAI',
-      search: '',
-      vendor: true,
-      models: ['ranked-model', 'rising-model'],
-    },
-  ].flatMap((testCase) => [
-    { ...testCase, initialUrl: '/pricing', navigation: 'a new URL' },
-    {
-      ...testCase,
-      initialUrl: testCase.vendor
-        ? '/pricing?vendor=OpenAI'
-        : `/pricing?search=${testCase.search}`,
-      navigation: 'the same URL',
-    },
-  ])
-)(
-  'applies the $name ranking link with $navigation, clears local filters and scrolls repeated selections into view',
-  async ({ name, search, vendor, models, initialUrl, navigation }) => {
-    const user = userEvent.setup()
-    const router = await renderPricing(initialUrl)
-    const initialSearch = router.state.location.search
-    const input = screen.getByRole('textbox', { name: 'Search models' })
-    const catalogView = within(screen.getByRole('main'))
-    await user.clear(input)
-    await user.type(input, 'other-model')
-    await user.click(
-      catalogView.getByRole('button', { name: /^Anthropic\s*1$/ })
+it('groups the default catalog by vendor and links to the independent rankings page', async () => {
+  await renderPricing()
+  const results = within(screen.getByRole('region', { name: 'Model results' }))
+  const openai = within(results.getByRole('region', { name: 'OpenAI' }))
+  expect(openai.getByText('2 models available')).toBeVisible()
+  expect(
+    openai
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent)
+  ).toEqual(['ranked-model', 'rising-model'])
+  expect(
+    within(results.getByRole('region', { name: 'Anthropic' })).getByRole(
+      'heading',
+      { name: 'other-model' }
     )
-    await waitFor(() =>
-      expect(
-        catalogView
-          .getAllByRole('heading', { level: 3 })
-          .map((heading) => heading.textContent)
-      ).toEqual(['other-model'])
-    )
-    expect(router.state.location.search).toEqual(initialSearch)
-
-    scrollIntoView.mockClear()
-    await user.click(screen.getByRole('link', { name }))
-
-    await waitFor(() => {
-      expect(input).toHaveValue(search)
-      expect(
-        catalogView.getByRole('button', { name: /^OpenAI\s*2$/ })
-      ).toHaveAttribute('aria-pressed', String(vendor))
-      expect(
-        catalogView.getByRole('button', { name: /^Anthropic\s*1$/ })
-      ).toHaveAttribute('aria-pressed', 'false')
-      expect(
-        catalogView
-          .getAllByRole('heading', { level: 3 })
-          .map((heading) => heading.textContent)
-      ).toEqual(models)
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole('contentinfo')).getByRole('link', {
+      name: 'Live platform rankings',
     })
-    expect(screen.getByRole('textbox', { name: 'Search models' })).toBe(input)
-    expect(router.state.location.search).toEqual(
-      vendor ? { vendor: 'OpenAI' } : { search }
-    )
-    if (navigation === 'the same URL') {
-      expect(scrollIntoView).toHaveBeenCalledWith({
-        block: 'start',
-        behavior: 'auto',
-      })
-      const scrollTarget = scrollIntoView.mock.contexts[0]
-      expect(scrollTarget).toContainElement(
-        catalogView.getByRole('heading', { name: models[0] })
-      )
-      expect(scrollTarget).not.toContainElement(input)
-      expect(scrollTarget).toBe(
-        screen.getByRole('region', { name: 'Model results' })
-      )
-    }
-  }
-)
-
-it('reapplies the same ranking filters and scrolls to the catalog when activated with Enter', async () => {
-  const user = userEvent.setup()
-  const router = await renderPricing('/pricing?search=ranked-model')
-  const input = screen.getByRole('textbox', { name: 'Search models' })
-  const catalogView = within(screen.getByRole('main'))
-  await user.clear(input)
-  await user.type(input, 'other-model')
-  await waitFor(() =>
-    expect(
-      catalogView.getByRole('heading', { name: 'other-model' })
-    ).toBeVisible()
-  )
-
-  scrollIntoView.mockClear()
-  screen.getByRole('link', { name: 'ranked-model' }).focus()
-  await user.keyboard('{Enter}')
-
-  await waitFor(() => {
-    expect(input).toHaveValue('ranked-model')
-    expect(
-      catalogView.getByRole('heading', { name: 'ranked-model' })
-    ).toBeVisible()
-    expect(
-      catalogView.queryByRole('heading', { name: 'other-model' })
-    ).not.toBeInTheDocument()
-  })
-  expect(router.state.location.search).toEqual({ search: 'ranked-model' })
-  expect(scrollIntoView).toHaveBeenCalledWith({
-    block: 'start',
-    behavior: 'auto',
-  })
-  expect(scrollIntoView.mock.contexts[0]).toContainElement(
-    catalogView.getByRole('heading', { name: 'ranked-model' })
-  )
+  ).toHaveAttribute('href', '/rankings')
+  expect(screen.queryByText('Most used models')).not.toBeInTheDocument()
 })
 
-it('preserves local filters and scroll position when a ranking link is opened with Control-click', async () => {
+it('keeps name sorting global instead of grouping results by vendor', async () => {
   const user = userEvent.setup()
-  const router = await renderPricing('/pricing?search=ranked-model')
-  const input = screen.getByRole('textbox', { name: 'Search models' })
-  const catalogView = within(screen.getByRole('main'))
-  await user.clear(input)
-  await user.type(input, 'other-model')
-  await waitFor(() =>
-    expect(
-      catalogView.getByRole('heading', { name: 'other-model' })
-    ).toBeVisible()
-  )
-
-  scrollIntoView.mockClear()
-  // Cancel jsdom's unsupported native navigation after React handles the click.
-  const preventNativeNavigation = (event: MouseEvent) => event.preventDefault()
-  document.addEventListener('click', preventNativeNavigation)
-  try {
-    await user.keyboard('{Control>}')
-    await user.click(screen.getByRole('link', { name: 'ranked-model' }))
-    await user.keyboard('{/Control}')
-  } finally {
-    document.removeEventListener('click', preventNativeNavigation)
-  }
-
-  expect(input).toHaveValue('other-model')
+  await renderPricing()
+  await user.click(screen.getByRole('button', { name: 'Display settings' }))
+  await user.click(screen.getByRole('button', { name: 'Catalog order' }))
+  await user.click(screen.getByRole('menuitem', { name: 'Name' }))
+  const results = within(screen.getByRole('region', { name: 'Model results' }))
   expect(
-    catalogView.getByRole('heading', { name: 'other-model' })
-  ).toBeVisible()
-  expect(router.state.location.search).toEqual({ search: 'ranked-model' })
-  expect(scrollIntoView).not.toHaveBeenCalled()
+    results
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent)
+  ).toEqual(['other-model', 'ranked-model', 'rising-model'])
+  expect(
+    results.queryByRole('region', { name: 'OpenAI' })
+  ).not.toBeInTheDocument()
+})
+
+it('filters the reference price table along with the model results', async () => {
+  const user = userEvent.setup()
+  await renderPricing()
+  const prices = within(
+    screen.getByRole('region', { name: 'Current model prices' })
+  )
+  expect(prices.getAllByRole('row')).toHaveLength(4)
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: 'All Vendors' }),
+    'Anthropic'
+  )
+  await waitFor(() => expect(prices.getAllByRole('row')).toHaveLength(2))
+  expect(prices.getByText('other-model')).toBeVisible()
+  expect(prices.queryByText('ranked-model')).not.toBeInTheDocument()
 })
 
 it('restores the search, vendor selection and model results after browser back and forward', async () => {
-  const user = userEvent.setup()
   const router = await renderPricing(
     '/pricing?search=other-model&vendor=Anthropic'
   )
   const input = screen.getByRole('textbox', { name: 'Search models' })
   const catalogView = within(screen.getByRole('main'))
-  await user.click(screen.getByRole('link', { name: 'OpenAI' }))
+  await act(() =>
+    router.navigate({ to: '/pricing', search: { vendor: 'OpenAI' } })
+  )
   await waitFor(() =>
     expect(catalogView.getAllByRole('heading', { level: 3 })).toHaveLength(2)
   )
@@ -456,8 +316,8 @@ it('restores the search, vendor selection and model results after browser back a
   await waitFor(() => {
     expect(input).toHaveValue('other-model')
     expect(
-      catalogView.getByRole('button', { name: /^Anthropic\s*1$/ })
-    ).toHaveAttribute('aria-pressed', 'true')
+      catalogView.getByRole('combobox', { name: 'All Vendors' })
+    ).toHaveValue('Anthropic')
     expect(
       catalogView
         .getAllByRole('heading', { level: 3 })
@@ -471,8 +331,8 @@ it('restores the search, vendor selection and model results after browser back a
   await waitFor(() => {
     expect(input).toHaveValue('')
     expect(
-      catalogView.getByRole('button', { name: /^OpenAI\s*2$/ })
-    ).toHaveAttribute('aria-pressed', 'true')
+      catalogView.getByRole('combobox', { name: 'All Vendors' })
+    ).toHaveValue('OpenAI')
     expect(
       catalogView
         .getAllByRole('heading', { level: 3 })
@@ -493,8 +353,8 @@ it('restores default filters when navigation removes the search parameters', asy
     )
     const catalogView = within(screen.getByRole('main'))
     expect(
-      catalogView.getByRole('button', { name: /^Anthropic\s*1$/ })
-    ).toHaveAttribute('aria-pressed', 'false')
+      catalogView.getByRole('combobox', { name: 'All Vendors' })
+    ).toHaveValue('all')
     expect(catalogView.getAllByRole('heading', { level: 3 })).toHaveLength(3)
   })
 })
@@ -506,7 +366,10 @@ it('keeps manual filters local when status updates rerender the page', async () 
   await user.clear(input)
   await user.type(input, 'other-model')
   const catalogView = within(screen.getByRole('main'))
-  await user.click(catalogView.getByRole('button', { name: /^Anthropic\s*1$/ }))
+  await user.selectOptions(
+    catalogView.getByRole('combobox', { name: 'All Vendors' }),
+    'Anthropic'
+  )
 
   act(() =>
     client.setQueryData(STATUS_QUERY_KEY, {
@@ -523,8 +386,8 @@ it('keeps manual filters local when status updates rerender the page', async () 
   )
   expect(input).toHaveValue('other-model')
   expect(
-    catalogView.getByRole('button', { name: /^Anthropic\s*1$/ })
-  ).toHaveAttribute('aria-pressed', 'true')
+    catalogView.getByRole('combobox', { name: 'All Vendors' })
+  ).toHaveValue('Anthropic')
   expect(router.state.location.search).toEqual({ search: 'ranked-model' })
 })
 
@@ -537,7 +400,10 @@ it('restores a capability URL, combines provider selection and resets the search
   )
   expect(results.getByRole('heading', { name: 'rising-model' })).toBeVisible()
   scrollIntoView.mockClear()
-  await user.click(screen.getByRole('button', { name: /^Anthropic\s*1$/ }))
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: 'All Vendors' }),
+    'Anthropic'
+  )
   expect(await results.findByText('No models found')).toBeVisible()
   expect(scrollIntoView.mock.contexts[0]).toBe(
     screen.getByRole('region', { name: 'Model results' })
@@ -552,32 +418,37 @@ it('restores a capability URL, combines provider selection and resets the search
     expect(results.getAllByRole('heading', { level: 3 })).toHaveLength(3)
   )
   expect(screen.getByRole('textbox', { name: 'Search models' })).toHaveValue('')
-  expect(
-    screen.getByRole('button', { name: 'All capabilities' })
-  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('combobox', { name: 'Capabilities' })).toHaveValue(
+    'all'
+  )
   expect(router.state.location.search).toEqual({ capability: 'image' })
   expect(scrollIntoView.mock.contexts[0]).toBe(
     screen.getByRole('region', { name: 'Model results' })
   )
 })
 
-it('ignores an unknown capability URL and links the catalog navigation to local rankings and home About', async () => {
-  const user = userEvent.setup()
-  const router = await renderPricing('/pricing?capability=not-a-capability')
+it('ignores an unknown capability URL and points section navigation at the new home anchors', async () => {
+  await renderPricing('/pricing?capability=not-a-capability')
   const header = within(screen.getByRole('banner'))
-  expect(
-    screen.getByRole('button', { name: 'All capabilities' })
-  ).toHaveAttribute('aria-pressed', 'true')
-  expect(header.getByRole('link', { name: 'About' })).toHaveAttribute(
-    'href',
-    '/#about'
+  expect(screen.getByRole('combobox', { name: 'Capabilities' })).toHaveValue(
+    'all'
   )
-  const rankings = header.getByRole('link', { name: 'Rankings' })
-  expect(rankings).toHaveAttribute('href', '/pricing#rank')
-  await user.click(rankings)
-  await waitFor(() => expect(router.state.location.hash).toBe('rank'))
-  expect(rankings).toHaveAttribute('aria-current', 'page')
   expect(
-    header.getByRole('link', { name: 'Model Square' })
-  ).not.toHaveAttribute('aria-current', 'page')
+    header.getByRole('link', { name: 'Core capabilities' })
+  ).toHaveAttribute('href', '/#ability')
+  expect(header.getByRole('link', { name: 'Developers' })).toHaveAttribute(
+    'href',
+    '/#dev'
+  )
+  expect(header.getByRole('link', { name: 'Pricing' })).toHaveAttribute(
+    'href',
+    '/#price'
+  )
+  expect(header.getByRole('link', { name: 'Model Square' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  )
+  expect(
+    header.queryByRole('link', { name: 'Rankings' })
+  ).not.toBeInTheDocument()
 })

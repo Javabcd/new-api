@@ -146,23 +146,43 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const [width, columns] of [
-  [390, 1],
-  [560, 1],
-  [820, 2],
+  [390, 2],
+  [560, 2],
+  [820, 3],
   [1040, 3],
-  [1120, 3],
+  [1120, 4],
   [1440, 4],
 ]) {
   test(`${width}px: keeps compact catalog columns, filters and navigation within the viewport`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/pricing')
     await expect(page.locator('.mxy-compact-model')).toHaveCount(40)
     await page.evaluate(() => document.fonts.ready)
+    const brandIcon = page
+      .getByRole('banner')
+      .locator('img[src="/maixiaoyun/logo.svg"]')
+    await expect
+      .poll(() =>
+        brandIcon.evaluate(
+          (element: HTMLImageElement) =>
+            element.complete &&
+            element.naturalWidth === 120 &&
+            element.naturalHeight === 120
+        )
+      )
+      .toBe(true)
+    if (width === 390 || width === 1440) {
+      await page.screenshot({
+        path: testInfo.outputPath('catalog.png'),
+        fullPage: true,
+      })
+    }
     expect(
       await page
         .locator('.mxy-model-grid')
+        .first()
         .evaluate(
           (element) =>
             getComputedStyle(element).gridTemplateColumns.split(' ').length
@@ -240,7 +260,7 @@ for (const viewport of [
     ).toBe(true)
   })
 
-  test(`${viewport.width}x${viewport.height}: keyboard navigation reaches clipped provider filters`, async ({
+  test(`${viewport.width}x${viewport.height}: keyboard selection reaches the last provider and keeps focus`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport)
@@ -249,34 +269,14 @@ for (const viewport of [
     )
     await page.goto('/pricing')
     await expect(page.locator('.mxy-compact-model')).toHaveCount(40)
-    const providers = page.getByRole('group', {
+    const providers = page.getByRole('combobox', {
       name: 'All Vendors',
       exact: true,
     })
     await providers.focus()
-    await page.keyboard.press('Tab')
-    for (const _provider of manyProvidersCatalog.vendors) {
-      await page.keyboard.press('Tab')
-    }
-    const lastProvider = providers.getByRole('button', {
-      name: /^Catalog Provider 24\s*3$/,
-    })
-    await expect(lastProvider).toBeFocused()
-    await expect
-      .poll(() =>
-        lastProvider.evaluate((element) => {
-          const bounds = element.getBoundingClientRect()
-          return element.contains(
-            document.elementFromPoint(
-              bounds.x + bounds.width / 2,
-              bounds.y + bounds.height / 2
-            )
-          )
-        })
-      )
-      .toBe(true)
-    await page.keyboard.press('Enter')
-    await expect(lastProvider).toHaveAttribute('aria-pressed', 'true')
+    await page.keyboard.press('End')
+    await expect(providers).toHaveValue('Catalog Provider 24')
+    await expect(providers).toBeFocused()
     await expect(page.locator('.mxy-compact-model')).toHaveCount(3)
   })
 }
@@ -300,13 +300,13 @@ test('deep scrolling then changing capability returns to the first forty model r
       .first()
       .evaluate((element) => element.getBoundingClientRect().bottom)
   ).toBeLessThan(0)
-  const capability = page.getByRole('button', {
-    name: 'Chat and reasoning',
+  const capability = page.getByRole('combobox', {
+    name: 'Capabilities',
     exact: true,
   })
   await expect(capability).toBeInViewport({ ratio: 1 })
 
-  await capability.click()
+  await capability.selectOption('text')
 
   await expect(cards).toHaveCount(40)
   await expectFirstCatalogModelVisible(page)
@@ -349,8 +349,8 @@ test('appends forty models, resets on capability changes, and preserves clipboar
     page.getByRole('button', { name: 'All models shown' })
   ).toBeDisabled()
   await page
-    .getByRole('button', { name: 'Image generation', exact: true })
-    .click()
+    .getByRole('combobox', { name: 'Capabilities', exact: true })
+    .selectOption('image')
   await expect(cards).toHaveCount(27)
   await page.getByRole('button', { name: 'Reset filters', exact: true }).click()
   await expect(cards).toHaveCount(40)
@@ -431,8 +431,8 @@ test('390x480: reserves the remaining viewport for the menu and restores focus',
   if (!bounds) throw new Error('The mobile menu has no bounds')
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(480.5)
   await expect(
-    menu.getByRole('link', { name: 'About', exact: true })
-  ).toHaveAttribute('href', '/#about')
+    menu.getByRole('link', { name: 'Core capabilities', exact: true })
+  ).toHaveAttribute('href', '/#ability')
   await page.keyboard.press('Escape')
   await expect(trigger).toBeFocused()
 })

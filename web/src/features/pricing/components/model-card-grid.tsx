@@ -24,6 +24,8 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ModelVendorIcon } from '@/features/marketing/model-vendor-icon'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
@@ -42,12 +44,14 @@ export interface ModelCardGridProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  groupByVendor?: boolean
 }
 
 export const ModelCardGrid = memo(function ModelCardGrid(
   props: ModelCardGridProps
 ) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [page, setPage] = useState(1)
   const compact = props.presentation === 'compact'
   const pageSize = compact ? 40 : DEFAULT_PRICING_PAGE_SIZE
@@ -80,41 +84,110 @@ export const ModelCardGrid = memo(function ModelCardGrid(
     return map
   }, [perfQuery.data])
 
+  const vendorGroups = useMemo(() => {
+    if (!props.groupByVendor) {
+      return [
+        {
+          key: 'all',
+          name: '',
+          count: props.models.length,
+          models: pagedModels,
+        },
+      ]
+    }
+    const counts = new Map<string, number>()
+    for (const model of props.models) {
+      const key =
+        model.vendor_id == null
+          ? `name:${model.vendor_name ?? ''}`
+          : `id:${model.vendor_id}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    const groups = new Map<
+      string,
+      { key: string; name: string; count: number; models: PricingModel[] }
+    >()
+    for (const model of pagedModels) {
+      const key =
+        model.vendor_id == null
+          ? `name:${model.vendor_name ?? ''}`
+          : `id:${model.vendor_id}`
+      let group = groups.get(key)
+      if (!group) {
+        group = {
+          key,
+          name: model.vendor_name ?? '',
+          count: counts.get(key) ?? 0,
+          models: [],
+        }
+        groups.set(key, group)
+      }
+      group.models.push(model)
+    }
+    return [...groups.values()]
+  }, [props.groupByVendor, props.models, pagedModels])
+
   if (props.models.length === 0) {
     return null
   }
 
   return (
     <div className='flex flex-col gap-4 sm:gap-5'>
-      <div
-        className={cn(
-          'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3',
-          props.appearance === 'marketing' && 'mxy-model-grid'
-        )}
-      >
-        {pagedModels.map((model) => (
-          <ModelCard
-            presentation={props.presentation}
-            key={model.id ?? model.model_name}
-            model={model}
-            icon={
-              props.appearance === 'marketing' ? (
-                <ModelVendorIcon
-                  name={model.vendor_name}
-                  icon={model.icon || model.vendor_icon}
-                />
-              ) : undefined
-            }
-            tokenUnit={tokenUnit}
-            priceRate={props.priceRate}
-            usdExchangeRate={props.usdExchangeRate}
-            showRechargePrice={props.showRechargePrice}
-            selectedGroup={props.selectedGroup}
-            perf={perfMap.get(model.model_name || '')}
-            onClick={props.onModelClick}
-          />
-        ))}
-      </div>
+      {vendorGroups.map((group) => (
+        <section
+          key={group.key}
+          className={props.groupByVendor ? 'mxy-vendor-group' : undefined}
+          aria-label={
+            props.groupByVendor ? group.name || t('Unknown vendor') : undefined
+          }
+        >
+          {props.groupByVendor && (
+            <div className='mxy-vendor-heading'>
+              <ModelVendorIcon
+                name={group.name}
+                icon={group.models[0]?.vendor_icon}
+              />
+              <div>
+                <h2>{group.name || t('Unknown vendor')}</h2>
+                <p>
+                  {t('{{total}} models available', {
+                    total: formatNumber(group.count, locale),
+                  })}
+                </p>
+              </div>
+            </div>
+          )}
+          <div
+            className={cn(
+              'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3',
+              props.appearance === 'marketing' && 'mxy-model-grid'
+            )}
+          >
+            {group.models.map((model) => (
+              <ModelCard
+                presentation={props.presentation}
+                key={model.id ?? model.model_name}
+                model={model}
+                icon={
+                  props.appearance === 'marketing' ? (
+                    <ModelVendorIcon
+                      name={model.vendor_name}
+                      icon={model.icon || model.vendor_icon}
+                    />
+                  ) : undefined
+                }
+                tokenUnit={tokenUnit}
+                priceRate={props.priceRate}
+                usdExchangeRate={props.usdExchangeRate}
+                showRechargePrice={props.showRechargePrice}
+                selectedGroup={props.selectedGroup}
+                perf={perfMap.get(model.model_name || '')}
+                onClick={props.onModelClick}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
       {compact && totalPages > 1 && (
         <div className='mxy-catalog-more'>

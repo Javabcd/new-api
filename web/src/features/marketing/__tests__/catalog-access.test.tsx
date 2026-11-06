@@ -23,11 +23,14 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createInstance } from 'i18next'
+import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MarketingCatalog } from '@/features/home/components/marketing-catalog'
+import { MarketingHero } from '@/features/home/components/marketing-hero'
 import { MarketingModalities } from '@/features/home/components/marketing-modalities'
 import type { PricingData } from '@/features/pricing/types'
 import type { RankingsSnapshot } from '@/features/rankings/types'
@@ -129,6 +132,39 @@ afterEach(() => {
 })
 
 describe('public catalog access', () => {
+  it('updates the illustration number when switching among all interface languages and an invalid locale', async () => {
+    const cases = [
+      ['en', '12.84M'],
+      ['zhCN', '12.84M'],
+      ['zhTW', '12.84M'],
+      ['fr', '12,84M'],
+      ['ja', '12.84M'],
+      ['ru', '12,84M'],
+      ['vi', '12,84M'],
+      ['invalid-locale', '12.84M'],
+    ]
+    const language = createInstance()
+    await language.init({
+      lng: 'en',
+      fallbackLng: 'en',
+      resources: Object.fromEntries(
+        cases.map(([code]) => [
+          code,
+          { translation: { 'Tokens consumed': 'Tokens consumed' } },
+        ])
+      ),
+    })
+    await renderCatalog(
+      <I18nextProvider i18n={language}>
+        <MarketingHero />
+      </I18nextProvider>
+    )
+    for (const [code, expected] of cases) {
+      await act(() => language.changeLanguage(code))
+      expect(screen.getByText(expected)).toBeVisible()
+    }
+  })
+
   it('shows only available model IDs in modality cards and hides them when sign-in becomes required', async () => {
     client.setQueryData(['pricing'], {
       ...catalog,
@@ -155,17 +191,27 @@ describe('public catalog access', () => {
     for (const note of notes) expect(note).toHaveTextContent('Illustration')
   })
 
-  it('uses the actual model count and limits the home preview to ten unique models', async () => {
+  it('uses the actual model count, shows four featured models and filters the model wall by capability', async () => {
     client.setQueryData(['pricing'], catalog)
     await renderCatalog(<MarketingCatalog />)
-    expect(await screen.findByText('model-1')).toBeVisible()
+    const featured = within(
+      await screen.findByRole('group', { name: 'Featured models' })
+    )
+    expect(featured.getByText('model-1')).toBeVisible()
     expect(screen.getByText('12')).toBeVisible()
-    expect(screen.getByText('model-10')).toBeVisible()
-    expect(screen.queryByText('model-11')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'model-1' })).toHaveAttribute(
+    expect(featured.getAllByRole('link')).toHaveLength(4)
+    expect(featured.queryByText('model-5')).not.toBeInTheDocument()
+    const wall = within(screen.getByRole('group', { name: 'Model results' }))
+    expect(wall.getAllByRole('link')).toHaveLength(12)
+    expect(wall.getByRole('link', { name: 'model-1' })).toHaveAttribute(
       'href',
       '/pricing/model-1'
     )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Image generation' }))
+    expect(wall.queryAllByRole('link')).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: 'All capabilities' }))
+    expect(wall.getAllByRole('link')).toHaveLength(12)
   })
 
   it('hides cached catalog data and makes no catalog request when sign-in is required', async () => {
@@ -231,7 +277,10 @@ describe('public catalog access', () => {
     await renderCatalog(<MarketingCatalog />)
     expect(await screen.findByText('Unable to load models')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('model-1')).toBeVisible()
+    const featured = within(
+      await screen.findByRole('group', { name: 'Featured models' })
+    )
+    expect(featured.getByText('model-1')).toBeVisible()
   })
 
   it('shows three real weekly ranking lists and links model names to the catalog', async () => {

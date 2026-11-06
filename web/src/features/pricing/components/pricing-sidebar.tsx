@@ -27,6 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
@@ -292,52 +293,35 @@ export const PricingSidebar = memo(function PricingSidebar(
       >
         <div className='mxy-catalog-tools-row'>
           {props.search}
-          <div
-            role='group'
+          <NativeSelect
             aria-label={t('Capabilities')}
-            className='mxy-catalog-chips'
+            value={props.capabilityFilter ?? FILTER_ALL}
+            onChange={(event) =>
+              props.onCapabilityChange?.(
+                event.target.value as CatalogCapability | 'all'
+              )
+            }
           >
-            <FilterChip
-              catalog
-              option={{ value: FILTER_ALL, label: t('All capabilities') }}
-              active={
-                !props.capabilityFilter || props.capabilityFilter === FILTER_ALL
-              }
-              onClick={() => props.onCapabilityChange?.(FILTER_ALL)}
-            />
+            <NativeSelectOption value={FILTER_ALL}>
+              {t('All capabilities')}
+            </NativeSelectOption>
             {CATALOG_CAPABILITY_VALUES.map((value) => (
-              <FilterChip
-                key={value}
-                catalog
-                option={{
-                  value,
-                  label: t(CATALOG_CAPABILITIES[value].labelKey),
-                }}
-                active={props.capabilityFilter === value}
-                onClick={() => props.onCapabilityChange?.(value)}
-              />
+              <NativeSelectOption key={value} value={value}>
+                {t(CATALOG_CAPABILITIES[value].labelKey)}
+              </NativeSelectOption>
             ))}
-          </div>
-        </div>
-        <div
-          role='group'
-          aria-label={t('All Vendors')}
-          tabIndex={0}
-          className='mxy-catalog-chips mxy-catalog-vendors'
-        >
-          {vendorOptions.map((option) => (
-            <FilterChip
-              key={option.value}
-              catalog
-              option={{
-                ...option,
-                icon: undefined,
-                count: option.value === FILTER_ALL ? undefined : option.count,
-              }}
-              active={props.vendorFilter === option.value}
-              onClick={() => props.onVendorChange(option.value)}
-            />
-          ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label={t('All Vendors')}
+            value={props.vendorFilter}
+            onChange={(event) => props.onVendorChange(event.target.value)}
+          >
+            {vendorOptions.map((option) => (
+              <NativeSelectOption key={option.value} value={option.value}>
+                {option.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
         </div>
       </aside>
     )

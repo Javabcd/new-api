@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '@/components/empty-state'
@@ -25,10 +26,16 @@ import { ErrorState } from '@/components/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { FEATURED_MODEL_NAMES } from '@/features/marketing/brand'
+import { selectFeaturedModels } from '@/features/marketing/featured-models'
 import { ModelVendorIcon } from '@/features/marketing/model-vendor-icon'
 import { useMarketingAccess } from '@/features/marketing/use-marketing-access'
+import {
+  CATALOG_CAPABILITIES,
+  CATALOG_CAPABILITY_VALUES,
+} from '@/features/pricing/constants'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { getCatalogCapabilities } from '@/features/pricing/lib/filters'
+import type { CatalogCapability } from '@/features/pricing/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
@@ -37,19 +44,18 @@ export function MarketingCatalog() {
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const access = useMarketingAccess('pricing')
   const catalog = usePricingData(access.allowed)
+  const [capability, setCapability] = useState<CatalogCapability | 'all'>('all')
   if (!access.enabled) return null
 
   const models = access.allowed ? catalog.models : []
-  const uniqueModels = new Map(models.map((model) => [model.model_name, model]))
-  const featured = []
-  for (const name of FEATURED_MODEL_NAMES) {
-    const model = uniqueModels.get(name)
-    if (model) {
-      featured.push(model)
-      uniqueModels.delete(name)
-    }
-  }
-  featured.push(...[...uniqueModels.values()].slice(0, 10 - featured.length))
+  const featured = selectFeaturedModels(models, 4)
+  const wallModels = models
+    .filter(
+      (model) =>
+        capability === 'all' ||
+        getCatalogCapabilities(model).includes(capability)
+    )
+    .slice(0, 24)
   const vendorCount = new Set(
     models.map((model) => model.vendor_id ?? model.vendor_name).filter(Boolean)
   ).size
@@ -87,7 +93,7 @@ export function MarketingCatalog() {
           </div>
         </div>
       </section>
-      <section className='mxy-section mxy-tinted' id='models'>
+      <section className='mxy-section mxy-tinted' id='plaza'>
         <div className='mxy-wrap'>
           <div className='mxy-section-heading mxy-centered'>
             <Badge variant='outline' className='mxy-eyebrow'>
@@ -118,7 +124,7 @@ export function MarketingCatalog() {
           )}
           {(access.pending || (access.allowed && catalog.isLoading)) && (
             <div className='mxy-featured-grid'>
-              {Array.from({ length: 10 }, (_, i) => (
+              {Array.from({ length: 4 }, (_, i) => (
                 <Skeleton key={i} className='h-40 rounded-2xl' />
               ))}
             </div>
@@ -143,7 +149,11 @@ export function MarketingCatalog() {
             !catalog.isLoading &&
             !catalog.error &&
             (featured.length > 0 ? (
-              <div className='mxy-featured-grid'>
+              <div
+                className='mxy-featured-grid'
+                role='group'
+                aria-label={t('Featured models')}
+              >
                 {featured.map((model) => (
                   <Link
                     to='/pricing/$modelId'
@@ -152,20 +162,30 @@ export function MarketingCatalog() {
                     aria-label={model.model_name}
                     className='mxy-featured-model'
                   >
-                    {model.tags && (
-                      <Badge variant='secondary' className='mxy-model-badge'>
-                        {t(model.tags.split(',')[0].trim())}
-                      </Badge>
-                    )}
-                    <ModelVendorIcon
-                      name={model.vendor_name}
-                      icon={model.icon || model.vendor_icon}
-                    />
-                    <div className='mxy-model-info'>
-                      <strong title={model.model_name}>
-                        {model.model_name}
-                      </strong>
-                      <span>{model.vendor_name || t('AI model')}</span>
+                    <div className='mxy-featured-top'>
+                      <ModelVendorIcon
+                        name={model.vendor_name}
+                        icon={model.icon || model.vendor_icon}
+                      />
+                      <div className='mxy-model-info'>
+                        <strong title={model.model_name}>
+                          {model.model_name}
+                        </strong>
+                        <span>{model.vendor_name || t('AI model')}</span>
+                      </div>
+                    </div>
+                    <p>
+                      {model.description ||
+                        t(
+                          'View model details, current prices and supported endpoints.'
+                        )}
+                    </p>
+                    <div className='mxy-featured-capabilities'>
+                      {getCatalogCapabilities(model).map((value) => (
+                        <Badge key={value} variant='secondary'>
+                          {t(CATALOG_CAPABILITIES[value].shortLabelKey)}
+                        </Badge>
+                      ))}
                     </div>
                   </Link>
                 ))}
@@ -178,21 +198,75 @@ export function MarketingCatalog() {
                 )}
               />
             ))}
-          <div className='mxy-capability-tags'>
-            {[
-              t('Text and reasoning'),
-              t('Multimodal understanding'),
-              t('Image generation and editing'),
-              t('Video generation'),
-              t('Speech and audio'),
-              t('Embeddings and retrieval'),
-            ].map((label) => (
-              <span key={label}>
-                <i aria-hidden='true' />
-                {label}
-              </span>
-            ))}
-          </div>
+          {access.allowed &&
+            !catalog.isLoading &&
+            !catalog.error &&
+            models.length > 0 && (
+              <>
+                <div
+                  className='mxy-capability-tags'
+                  role='group'
+                  aria-label={t('Capabilities')}
+                >
+                  <Button
+                    variant={capability === 'all' ? 'default' : 'outline'}
+                    aria-pressed={capability === 'all'}
+                    onClick={() => setCapability('all')}
+                  >
+                    {t('All capabilities')}
+                  </Button>
+                  {CATALOG_CAPABILITY_VALUES.map((value) => (
+                    <Button
+                      key={value}
+                      variant={capability === value ? 'default' : 'outline'}
+                      aria-pressed={capability === value}
+                      onClick={() => setCapability(value)}
+                    >
+                      {t(CATALOG_CAPABILITIES[value].labelKey)}
+                    </Button>
+                  ))}
+                </div>
+                <div
+                  className='mxy-model-wall'
+                  role='group'
+                  aria-label={t('Model results')}
+                >
+                  {wallModels.map((model) => (
+                    <Link
+                      key={model.model_name}
+                      to='/pricing/$modelId'
+                      params={{ modelId: model.model_name }}
+                      className='mxy-wall-model'
+                      aria-label={model.model_name}
+                    >
+                      <ModelVendorIcon
+                        name={model.vendor_name}
+                        icon={model.icon || model.vendor_icon}
+                      />
+                      <div className='mxy-model-info'>
+                        <strong title={model.model_name}>
+                          {model.model_name}
+                        </strong>
+                        <span>{model.vendor_name || t('AI model')}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+                {wallModels.length === 0 && (
+                  <EmptyState
+                    title={t('No models available')}
+                    action={
+                      <Button
+                        variant='outline'
+                        onClick={() => setCapability('all')}
+                      >
+                        {t('Reset')}
+                      </Button>
+                    }
+                  />
+                )}
+              </>
+            )}
           <div className='mxy-section-bottom'>
             <p>
               {t(

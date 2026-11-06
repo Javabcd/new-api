@@ -70,43 +70,48 @@ function CompactModelCard(props: ModelCardProps) {
   const label = capability ? t(capability.labelKey) : t('Unlabeled')
   return (
     <Card className='mxy-compact-model'>
-      <span className='mxy-compact-icon' aria-hidden='true'>
-        {props.icon ?? (
-          <span className='mxy-vendor-fallback'>
-            {props.model.model_name.charAt(0).toUpperCase()}
-          </span>
-        )}
-      </span>
-      <div className='mxy-compact-info'>
-        <h3 className='mxy-compact-name' title={props.model.model_name}>
-          <Button
-            variant='ghost'
-            className='mxy-compact-trigger'
-            aria-label={t('View details for {{model}}', {
-              model: props.model.model_name,
-            })}
-            onClick={() => props.onClick(props.model.model_name)}
-          >
-            {props.model.model_name}
-          </Button>
-        </h3>
-        <span
-          className='mxy-compact-meta'
-          title={[props.model.vendor_name, label].filter(Boolean).join(' · ')}
-        >
-          {[props.model.vendor_name, label].filter(Boolean).join(' · ')}
+      <CardHeader className='mxy-compact-top'>
+        <span className='mxy-compact-icon' aria-hidden='true'>
+          {props.icon ?? (
+            <span className='mxy-vendor-fallback'>
+              {props.model.model_name.charAt(0).toUpperCase()}
+            </span>
+          )}
         </span>
-      </div>
-      <Badge
-        variant='secondary'
-        className={cn(
-          'mxy-capability-badge',
-          primary && `mxy-capability-${primary}`
-        )}
-        title={label}
-      >
-        {capability ? t(capability.shortLabelKey) : t('Unlabeled')}
-      </Badge>
+        <div className='mxy-compact-info'>
+          <h3 className='mxy-compact-name' title={props.model.model_name}>
+            <Button
+              variant='ghost'
+              className='mxy-compact-trigger'
+              aria-label={t('View details for {{model}}', {
+                model: props.model.model_name,
+              })}
+              onClick={() => props.onClick(props.model.model_name)}
+            >
+              {props.model.model_name}
+            </Button>
+          </h3>
+          <span
+            className='mxy-compact-meta'
+            title={[props.model.vendor_name, label].filter(Boolean).join(' · ')}
+          >
+            {[props.model.vendor_name, label].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+      </CardHeader>
+      <CardFooter className='mxy-compact-foot'>
+        <Badge
+          variant='secondary'
+          className={cn(
+            'mxy-capability-badge',
+            primary && `mxy-capability-${primary}`
+          )}
+          title={label}
+        >
+          {capability ? t(capability.shortLabelKey) : t('Unlabeled')}
+        </Badge>
+        <ModelBillingModeBadge model={props.model} appearance='caption' />
+      </CardFooter>
       <CopyButton
         value={props.model.model_name}
         tooltip={t('Copy model name')}
